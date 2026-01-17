@@ -1,0 +1,53 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+  .btn-hover {
+    @apply transition-all duration-300 ease-in-out;
+  }
+
+  .btn-hover:hover {
+    @apply shadow-lg transform -translate-y-0.5;
+  }
+
+  .card-hover {
+    @apply transition-all duration-300 ease-in-out;
+  }
+
+  .card-hover:hover {
+    @apply shadow-xl transform -translate-y-1;
+  }
+
+  .gradient-bg {
+    background: linear-gradient(
+      135deg,
+      #ffffff 0%,
+      #f0f9ff 15%,
+      #dbeafe 25%,
+      #bfdbfe 35%,
+      #93c5fd 45%,
+      #60a5fa 55%,
+      #3b82f6 65%,
+      #2563eb 75%,
+      #1e40af 85%,
+      #1e3a8a 95%,
+      #172554 100%
+    );
+    background-size: 100% 300vh;
+    background-attachment: fixed;
+    min-height: 100vh;
+  }
+}
+
+button {
+  @apply transition-all duration-200 ease-in-out;
+}
+
+button:hover:not(:disabled) {
+  @apply shadow-md transform -translate-y-0.5;
+}
+
+button:active:not(:disabled) {
+  @apply transform translate-y-0;
+}
