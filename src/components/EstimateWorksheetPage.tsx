@@ -542,7 +542,7 @@ export function EstimateWorksheetPage() {
                     onKeyDown={(e) => handleItemKeyDown(e, row.id)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-y min-h-[42px]"
                     placeholder="Enter item description&#10;Press Enter to add bullets automatically"
-                    rows={1}
+                    rows={2}
                     onInput={(e) => {
                       const target = e.target as HTMLTextAreaElement;
                       target.style.height = 'auto';
