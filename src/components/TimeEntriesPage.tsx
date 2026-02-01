@@ -55,6 +55,9 @@ export function TimeEntriesPage() {
   const [locationSearchTerm, setLocationSearchTerm] = useState('');
   const [activeEmployeeDropdownIndex, setActiveEmployeeDropdownIndex] = useState<number | null>(null);
   const [activeRetailerDropdownIndex, setActiveRetailerDropdownIndex] = useState<{ entry: number, expense: number } | null>(null);
+  const [employeeHighlight, setEmployeeHighlight] = useState<Record<number, number>>({});
+  const [locationHighlight, setLocationHighlight] = useState<Record<number, number>>({});
+  const [retailerHighlight, setRetailerHighlight] = useState<Record<string, number>>({});
   const dropdownRef = useRef<HTMLDivElement>(null);
   const employeeDropdownRef = useRef<HTMLDivElement>(null);
   const retailerDropdownRef = useRef<HTMLDivElement>(null);
@@ -152,8 +155,23 @@ export function TimeEntriesPage() {
           .not('location', 'is', null);
 
         if (error) throw error;
-        const uniqueLocations = Array.from(new Set(data.map(entry => entry.location))).sort();
-        setLocations(uniqueLocations);
+        const locationsFromEntries = Array.from(new Set(data.map(entry => entry.location)));
+
+        // Also fetch saved estimate job names and include them as possible locations
+        const { data: estimateData, error: estimateError } = await supabase
+          .from('estimate_worksheets')
+          .select('job_name');
+
+        if (estimateError) {
+          console.error('Error fetching estimates for locations:', estimateError);
+        }
+
+        const estimateNames: string[] = (estimateData || [])
+          .map((e: any) => (e.job_name || '').replace(/ v\d+$/, ''))
+          .filter((n: string) => n && n.trim().length > 0);
+
+        const combined = Array.from(new Set([...locationsFromEntries, ...estimateNames])).sort();
+        setLocations(combined);
       } catch (error) {
         console.error('Error fetching locations:', error);
       }
@@ -441,10 +459,7 @@ export function TimeEntriesPage() {
     }
   };
 
-  // Filter locations based on search term
-  const filteredLocations = locations.filter(location =>
-    location.toLowerCase().includes(locationSearchTerm.toLowerCase())
-  );
+  // Note: per-entry filtering is applied when rendering dropdowns using the entry's current input value.
 
   return (
     <div className="space-y-6">
@@ -481,25 +496,51 @@ export function TimeEntriesPage() {
                           newEntries[entryIndex].full_name = e.target.value;
                           setEntries(newEntries);
                         }}
-                        onClick={() => setActiveEmployeeDropdownIndex(entryIndex)}
+                        onClick={() => {
+                          setActiveEmployeeDropdownIndex(entryIndex);
+                          setEmployeeHighlight(prev => ({ ...prev, [entryIndex]: 0 }));
+                        }}
+                        onKeyDown={(e) => {
+                          const filtered = employees.filter(emp => emp.full_name.toLowerCase().startsWith((entry.full_name || '').toLowerCase()));
+                          const max = filtered.length - 1;
+                          if (e.key === 'ArrowDown') {
+                            e.preventDefault();
+                            setActiveEmployeeDropdownIndex(entryIndex);
+                            setEmployeeHighlight(prev => ({ ...prev, [entryIndex]: Math.min((prev[entryIndex] ?? 0) + 1, Math.max(0, max)) }));
+                          } else if (e.key === 'ArrowUp') {
+                            e.preventDefault();
+                            setEmployeeHighlight(prev => ({ ...prev, [entryIndex]: Math.max((prev[entryIndex] ?? 0) - 1, 0) }));
+                          } else if (e.key === 'Enter') {
+                            if (activeEmployeeDropdownIndex === entryIndex && filtered.length > 0) {
+                              e.preventDefault();
+                              const idx = employeeHighlight[entryIndex] ?? 0;
+                              const chosen = filtered[Math.max(0, Math.min(idx, max))];
+                              if (chosen) handleEmployeeSelect(chosen.id, chosen.full_name, entryIndex);
+                            }
+                          } else if (e.key === 'Escape') {
+                            setActiveEmployeeDropdownIndex(null);
+                          }
+                        }}
                         className="w-full pl-8 pr-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                         placeholder="Select employee"
                         required
                       />
                       {activeEmployeeDropdownIndex === entryIndex && (
-                        <div className="absolute z-10 w-full mt-1 bg-white rounded-lg shadow-lg border border-gray-200 max-h-60 overflow-y-auto">
-                          {employees.map((employee) => (
-                            <button
-                              key={employee.id}
-                              type="button"
-                              onClick={() => handleEmployeeSelect(employee.id, employee.full_name, entryIndex)}
-                              className="w-full px-4 py-2 text-left hover:bg-gray-50"
-                            >
-                              {employee.full_name}
-                            </button>
-                          ))}
-                        </div>
-                      )}
+                          <div className="absolute z-10 w-full mt-1 bg-white rounded-lg shadow-lg border border-gray-200 max-h-60 overflow-y-auto">
+                            {employees
+                              .filter(emp => emp.full_name.toLowerCase().startsWith((entry.full_name || '').toLowerCase()))
+                              .map((employee, i) => (
+                                <button
+                                  key={employee.id}
+                                  type="button"
+                                  onClick={() => handleEmployeeSelect(employee.id, employee.full_name, entryIndex)}
+                                  className={`w-full px-4 py-2 text-left hover:bg-gray-50 ${((employeeHighlight[entryIndex] ?? 0) === i) ? 'bg-gray-100' : ''}`}
+                                >
+                                  {employee.full_name}
+                                </button>
+                              ))}
+                          </div>
+                        )}
                     </div>
                   </div>
                 )}
@@ -529,10 +570,35 @@ export function TimeEntriesPage() {
                       onChange={(e) => {
                         const newEntries = [...entries];
                         newEntries[entryIndex].location = e.target.value;
-                        setLocationSearchTerm(e.target.value);
+                        setActiveDropdownIndex(entryIndex);
+                        setLocationHighlight(prev => ({ ...prev, [entryIndex]: 0 }));
                         setEntries(newEntries);
                       }}
-                      onClick={() => setActiveDropdownIndex(entryIndex)}
+                      onClick={() => {
+                        setActiveDropdownIndex(entryIndex);
+                        setLocationHighlight(prev => ({ ...prev, [entryIndex]: 0 }));
+                      }}
+                      onKeyDown={(e) => {
+                        const filtered = locations.filter(loc => loc.toLowerCase().includes((entry.location || '').toLowerCase()));
+                        const max = filtered.length - 1;
+                        if (e.key === 'ArrowDown') {
+                          e.preventDefault();
+                          setActiveDropdownIndex(entryIndex);
+                          setLocationHighlight(prev => ({ ...prev, [entryIndex]: Math.min((prev[entryIndex] ?? 0) + 1, Math.max(0, max)) }));
+                        } else if (e.key === 'ArrowUp') {
+                          e.preventDefault();
+                          setLocationHighlight(prev => ({ ...prev, [entryIndex]: Math.max((prev[entryIndex] ?? 0) - 1, 0) }));
+                        } else if (e.key === 'Enter') {
+                          if (activeDropdownIndex === entryIndex && filtered.length > 0) {
+                            e.preventDefault();
+                            const idx = locationHighlight[entryIndex] ?? 0;
+                            const chosen = filtered[Math.max(0, Math.min(idx, max))];
+                            if (chosen) handleLocationSelect(chosen, entryIndex);
+                          }
+                        } else if (e.key === 'Escape') {
+                          setActiveDropdownIndex(null);
+                        }
+                      }}
                       className="w-full pl-8 pr-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                       placeholder="Enter or select location"
                       required
@@ -542,18 +608,20 @@ export function TimeEntriesPage() {
                       size={16}
                       onClick={() => setActiveDropdownIndex(entryIndex)}
                     />
-                    {activeDropdownIndex === entryIndex && filteredLocations.length > 0 && (
+                    {activeDropdownIndex === entryIndex && locations.length > 0 && (
                       <div className="absolute z-10 w-full mt-1 bg-white rounded-lg shadow-lg border border-gray-200 max-h-60 overflow-y-auto">
-                        {filteredLocations.map((location) => (
-                          <button
-                            key={location}
-                            type="button"
-                            onClick={() => handleLocationSelect(location, entryIndex)}
-                            className="w-full px-4 py-2 text-left hover:bg-gray-50"
-                          >
-                            {location}
-                          </button>
-                        ))}
+                        {locations
+                          .filter(loc => loc.toLowerCase().includes((entry.location || '').toLowerCase()))
+                          .map((location, i) => (
+                            <button
+                              key={location}
+                              type="button"
+                              onClick={() => handleLocationSelect(location, entryIndex)}
+                              className={`w-full px-4 py-2 text-left hover:bg-gray-50 ${((locationHighlight[entryIndex] ?? 0) === i) ? 'bg-gray-100' : ''}`}
+                            >
+                              {location}
+                            </button>
+                          ))}
                       </div>
                     )}
                   </div>
@@ -774,7 +842,36 @@ export function TimeEntriesPage() {
                             type="text"
                             value={expense.retailer_name || ''}
                             onChange={(e) => updateExpense(entryIndex, expenseIndex, { retailer_name: e.target.value })}
-                            onClick={() => setActiveRetailerDropdownIndex({ entry: entryIndex, expense: expenseIndex })}
+                            onClick={() => {
+                              setActiveRetailerDropdownIndex({ entry: entryIndex, expense: expenseIndex });
+                              const key = `${entryIndex}-${expenseIndex}`;
+                              setRetailerHighlight(prev => ({ ...prev, [key]: 0 }));
+                            }}
+                            onKeyDown={(e) => {
+                              const key = `${entryIndex}-${expenseIndex}`;
+                              const filtered = retailers.filter(r => r.name.toLowerCase().startsWith((expense.retailer_name || '').toLowerCase()));
+                              const max = filtered.length - 1;
+                              if (e.key === 'ArrowDown') {
+                                e.preventDefault();
+                                setActiveRetailerDropdownIndex({ entry: entryIndex, expense: expenseIndex });
+                                setRetailerHighlight(prev => ({ ...prev, [key]: Math.min((prev[key] ?? 0) + 1, Math.max(0, max)) }));
+                              } else if (e.key === 'ArrowUp') {
+                                e.preventDefault();
+                                setRetailerHighlight(prev => ({ ...prev, [key]: Math.max((prev[key] ?? 0) - 1, 0) }));
+                              } else if (e.key === 'Enter') {
+                                if (activeRetailerDropdownIndex?.entry === entryIndex && activeRetailerDropdownIndex?.expense === expenseIndex && filtered.length > 0) {
+                                  e.preventDefault();
+                                  const idx = retailerHighlight[key] ?? 0;
+                                  const chosen = filtered[Math.max(0, Math.min(idx, max))];
+                                  if (chosen) {
+                                    updateExpense(entryIndex, expenseIndex, { retailer_id: chosen.id, retailer_name: chosen.name });
+                                    setActiveRetailerDropdownIndex(null);
+                                  }
+                                }
+                              } else if (e.key === 'Escape') {
+                                setActiveRetailerDropdownIndex(null);
+                              }
+                            }}
                             className="w-full pl-8 pr-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                             placeholder="Enter or select retailer"
                             required
@@ -782,22 +879,27 @@ export function TimeEntriesPage() {
                           {activeRetailerDropdownIndex?.entry === entryIndex &&
                            activeRetailerDropdownIndex?.expense === expenseIndex && (
                             <div className="absolute z-10 w-full mt-1 bg-white rounded-lg shadow-lg border border-gray-200 max-h-60 overflow-y-auto">
-                              {retailers.map((retailer) => (
-                                <button
-                                  key={retailer.id}
-                                  type="button"
-                                  onClick={() => {
-                                    updateExpense(entryIndex, expenseIndex, {
-                                      retailer_id: retailer.id,
-                                      retailer_name: retailer.name
-                                    });
-                                    setActiveRetailerDropdownIndex(null);
-                                  }}
-                                  className="w-full px-4 py-2 text-left hover:bg-gray-50"
-                                >
-                                  {retailer.name}
-                                </button>
-                              ))}
+                              {retailers
+                                .filter(r => r.name.toLowerCase().startsWith((expense.retailer_name || '').toLowerCase()))
+                                .map((retailer, i) => {
+                                  const key = `${entryIndex}-${expenseIndex}`;
+                                  return (
+                                    <button
+                                      key={retailer.id}
+                                      type="button"
+                                      onClick={() => {
+                                        updateExpense(entryIndex, expenseIndex, {
+                                          retailer_id: retailer.id,
+                                          retailer_name: retailer.name
+                                        });
+                                        setActiveRetailerDropdownIndex(null);
+                                      }}
+                                      className={`w-full px-4 py-2 text-left hover:bg-gray-50 ${((retailerHighlight[key] ?? 0) === i) ? 'bg-gray-100' : ''}`}
+                                    >
+                                      {retailer.name}
+                                    </button>
+                                  );
+                                })}
                             </div>
                           )}
                         </div>

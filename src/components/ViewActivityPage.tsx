@@ -157,11 +157,15 @@ export function ViewActivityPage() {
   const [uniqueNames, setUniqueNames] = useState<string[]>([]);
   const [locations, setLocations] = useState<string[]>([]);
   const [showLocationDropdown, setShowLocationDropdown] = useState(false);
+  const [showLocationHighlight, setShowLocationHighlight] = useState(0);
   const [expandedPersons, setExpandedPersons] = useState<Set<string>>(new Set());
   const [expandedLocations, setExpandedLocations] = useState<Set<string>>(new Set());
   const locationDropdownRef = useRef<HTMLDivElement>(null);
   const [chartType, setChartType] = useState<'bar' | 'pie'>('bar');
   const [isAdmin, setIsAdmin] = useState(false);
+  const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
+  const [editValues, setEditValues] = useState<Partial<TimeEntry> | null>(null);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
 
   const chartOptions = {
     responsive: true,
@@ -268,22 +272,17 @@ export function ViewActivityPage() {
       const uniqueUsers = Array.from(new Set(entries.map(entry => entry.full_name))).sort();
       const sortedDates = Object.keys(data).sort();
 
+      // Map one color per user so the same person keeps the same color across the chart
+      const colorMap = createColorMapper(uniqueUsers);
+
       return {
         labels: sortedDates,
-        datasets: uniqueUsers.map((user, userIndex) => {
-          const barColors = sortedDates.map((date, dateIndex) => {
-            // Generate unique color per bar to avoid repetition across wide date ranges
-            const colorIndex = userIndex * sortedDates.length + dateIndex;
-            return generateUniqueColor(colorIndex);
-          });
-          
-          return {
-            label: user,
-            data: sortedDates.map(date => data[date][user]?.hours || 0),
-            backgroundColor: barColors,
-            locationData: sortedDates.map(date => data[date][user]?.locations || []),
-          };
-        })
+        datasets: uniqueUsers.map((user) => ({
+          label: user,
+          data: sortedDates.map(date => data[date][user]?.hours || 0),
+          backgroundColor: colorMap.get(user) || generateUniqueColor(0),
+          locationData: sortedDates.map(date => data[date][user]?.locations || []),
+        }))
       };
     } catch (error) {
       console.error('Error generating chart data:', error);
@@ -654,6 +653,58 @@ export function ViewActivityPage() {
     }
   };
 
+  const startEditing = (entry: TimeEntry) => {
+    setEditingEntryId(entry.id);
+    setEditValues({
+      date: entry.date,
+      start_time: entry.start_time,
+      end_time: entry.end_time,
+      location: entry.location,
+      lunch_break: entry.lunch_break,
+      notes: entry.notes
+    });
+  };
+
+  const cancelEdit = () => {
+    setEditingEntryId(null);
+    setEditValues(null);
+  };
+
+  const saveEdit = async (entryId: string) => {
+    if (!editValues) return;
+    setIsSavingEdit(true);
+    try {
+      const payload: any = {};
+      if (editValues.date) payload.date = editValues.date;
+      if (editValues.start_time) payload.start_time = editValues.start_time;
+      if (editValues.end_time) payload.end_time = editValues.end_time;
+      payload.location = editValues.location ?? '';
+      payload.lunch_break = editValues.lunch_break ?? null;
+      payload.notes = editValues.notes ?? null;
+
+      const { data, error } = await supabase
+        .from('time_entries')
+        .update(payload)
+        .eq('id', entryId)
+        .select(
+          `id, date, start_time, end_time, location, lunch_break, notes, created_at, user_id, full_name, is_full_day, expenses (amount, description, receipt_url)`
+        )
+        .single();
+
+      if (error) throw error;
+
+      setEntries(prev => prev.map(e => e.id === entryId ? (data as TimeEntry) : e));
+      setEditingEntryId(null);
+      setEditValues(null);
+      alert('Time entry updated');
+    } catch (error) {
+      console.error('Error saving edit:', error);
+      alert('Failed to save changes');
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
   const exportToCSV = () => {
     try {
       const headers = [
@@ -803,8 +854,38 @@ export function ViewActivityPage() {
               <input
                 type="text"
                 value={location}
-                onChange={(e) => setLocation(e.target.value)}
-                onClick={() => setShowLocationDropdown(true)}
+                onChange={(e) => {
+                  setLocation(e.target.value);
+                  setShowLocationDropdown(true);
+                  setShowLocationHighlight(0);
+                }}
+                onClick={() => {
+                  setShowLocationDropdown(true);
+                  setShowLocationHighlight(0);
+                }}
+                onKeyDown={(e) => {
+                  const filtered = locations.filter(loc => loc.toLowerCase().includes((location || '').toLowerCase()));
+                  const max = filtered.length - 1;
+                  if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    setShowLocationHighlight(prev => Math.min(prev + 1, Math.max(0, max)));
+                    setShowLocationDropdown(true);
+                  } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    setShowLocationHighlight(prev => Math.max(prev - 1, 0));
+                  } else if (e.key === 'Enter') {
+                    if (showLocationDropdown && filtered.length > 0) {
+                      e.preventDefault();
+                      const chosen = filtered[Math.max(0, Math.min(showLocationHighlight, max))];
+                      if (chosen) {
+                        setLocation(chosen);
+                        setShowLocationDropdown(false);
+                      }
+                    }
+                  } else if (e.key === 'Escape') {
+                    setShowLocationDropdown(false);
+                  }
+                }}
                 className="w-full pl-10 pr-10 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                 placeholder="Enter or select location"
               />
@@ -825,19 +906,21 @@ export function ViewActivityPage() {
                   >
                     All locations
                   </button>
-                  {locations.map((loc) => (
-                    <button
-                      key={loc}
-                      type="button"
-                      onClick={() => {
-                        setLocation(loc);
-                        setShowLocationDropdown(false);
-                      }}
-                      className="w-full px-4 py-2 text-left hover:bg-gray-50 text-sm"
-                    >
-                      {loc}
-                    </button>
-                  ))}
+                  {locations
+                    .filter(loc => loc.toLowerCase().includes((location || '').toLowerCase()))
+                    .map((loc, i) => (
+                      <button
+                        key={loc}
+                        type="button"
+                        onClick={() => {
+                          setLocation(loc);
+                          setShowLocationDropdown(false);
+                        }}
+                        className={`w-full px-4 py-2 text-left hover:bg-gray-50 text-sm ${showLocationHighlight === i ? 'bg-gray-100' : ''}`}
+                      >
+                        {loc}
+                      </button>
+                    ))}
                 </div>
               )}
             </div>
@@ -1041,74 +1124,168 @@ export function ViewActivityPage() {
 
                                       return (
                                         <div key={entry.id} className="bg-white rounded-lg border border-gray-200 p-3">
-                                          <div className="flex justify-between items-start mb-3">
-                                            <div className="flex-1">
-                                              <p className="text-sm font-medium text-gray-900">
-                                                {formattedDate}
-                                              </p>
-                                            </div>
-                                            <div className="flex items-start gap-3">
-                                              <div className="text-right">
-                                                <p className="text-sm font-medium text-gray-900">
-                                                  {entry.start_time} - {entry.end_time}
-                                                </p>
-                                                {entry.lunch_break && (
-                                                  <p className="text-xs text-gray-500">
-                                                    Lunch Break: {entry.lunch_break}
-                                                  </p>
-                                                )}
-                                                <p className="text-sm font-semibold text-blue-600 mt-1">
-                                                  {calculateDuration(entry.start_time, entry.end_time, entry.lunch_break).toFixed(1)} hrs
-                                                </p>
-                                              </div>
-                                              {isAdmin && (
-                                                <button
-                                                  onClick={() => deleteEntry(entry.id)}
-                                                  className="text-red-500 hover:text-red-700 p-1 rounded hover:bg-red-50 transition-colors"
-                                                  title="Delete entry"
-                                                >
-                                                  <Trash2 className="h-4 w-4" />
-                                                </button>
-                                              )}
-                                            </div>
-                                          </div>
-
-                                          <div className="space-y-2">
-                                            {entry.notes && (
-                                              <div>
-                                                <p className="text-xs font-medium text-gray-700">Notes</p>
-                                                <p className="text-sm text-gray-900">{entry.notes}</p>
-                                              </div>
-                                            )}
-
-                                            {entry.expenses && entry.expenses.length > 0 && (
-                                              <div>
-                                                <p className="text-xs font-medium text-gray-700 mb-1">Expenses</p>
-                                                <div className="space-y-2">
-                                                  {entry.expenses.map((expense, index) => (
-                                                    <div key={index} className="flex items-start justify-between bg-gray-50 p-2 rounded-lg">
-                                                      <div>
-                                                        <p className="text-xs text-gray-900">{expense.description}</p>
-                                                        {expense.receipt_url && (
-                                                          <a
-                                                            href={expense.receipt_url}
-                                                            target="_blank"
-                                                            rel="noopener noreferrer"
-                                                            className="text-xs text-blue-600 hover:text-blue-800"
-                                                          >
-                                                            View Receipt
-                                                          </a>
-                                                        )}
-                                                      </div>
-                                                      <p className="text-xs font-medium text-gray-900">
-                                                        ${expense.amount.toFixed(2)}
-                                                      </p>
-                                                    </div>
-                                                  ))}
+                                          {editingEntryId === entry.id && editValues ? (
+                                            <div className="space-y-3">
+                                              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                                <div>
+                                                  <label className="text-xs text-gray-600">Date</label>
+                                                  <input
+                                                    type="date"
+                                                    value={editValues.date || ''}
+                                                    onChange={(e) => setEditValues(prev => ({ ...(prev || {}), date: e.target.value }))}
+                                                    className="w-full mt-1 p-2 border rounded"
+                                                  />
+                                                </div>
+                                                <div>
+                                                  <label className="text-xs text-gray-600">Start</label>
+                                                  <input
+                                                    type="time"
+                                                    value={editValues.start_time || ''}
+                                                    onChange={(e) => setEditValues(prev => ({ ...(prev || {}), start_time: e.target.value }))}
+                                                    className="w-full mt-1 p-2 border rounded"
+                                                  />
+                                                </div>
+                                                <div>
+                                                  <label className="text-xs text-gray-600">End</label>
+                                                  <input
+                                                    type="time"
+                                                    value={editValues.end_time || ''}
+                                                    onChange={(e) => setEditValues(prev => ({ ...(prev || {}), end_time: e.target.value }))}
+                                                    className="w-full mt-1 p-2 border rounded"
+                                                  />
                                                 </div>
                                               </div>
-                                            )}
-                                          </div>
+
+                                              <div>
+                                                <label className="text-xs text-gray-600">Location</label>
+                                                <input
+                                                  type="text"
+                                                  value={editValues.location || ''}
+                                                  onChange={(e) => setEditValues(prev => ({ ...(prev || {}), location: e.target.value }))}
+                                                  className="w-full mt-1 p-2 border rounded"
+                                                />
+                                              </div>
+
+                                              <div>
+                                                <label className="text-xs text-gray-600">Lunch Break (HH:MM)</label>
+                                                <input
+                                                  type="text"
+                                                  value={editValues.lunch_break || ''}
+                                                  onChange={(e) => setEditValues(prev => ({ ...(prev || {}), lunch_break: e.target.value }))}
+                                                  className="w-full mt-1 p-2 border rounded"
+                                                  placeholder="00:30"
+                                                />
+                                              </div>
+
+                                              <div>
+                                                <label className="text-xs text-gray-600">Notes</label>
+                                                <textarea
+                                                  value={editValues.notes || ''}
+                                                  onChange={(e) => setEditValues(prev => ({ ...(prev || {}), notes: e.target.value }))}
+                                                  className="w-full mt-1 p-2 border rounded"
+                                                  rows={3}
+                                                />
+                                              </div>
+
+                                              <div className="flex gap-2 justify-end">
+                                                <button
+                                                  onClick={cancelEdit}
+                                                  className="px-3 py-2 bg-gray-100 rounded text-sm"
+                                                  type="button"
+                                                >
+                                                  Cancel
+                                                </button>
+                                                <button
+                                                  onClick={() => saveEdit(entry.id)}
+                                                  disabled={isSavingEdit}
+                                                  className="px-3 py-2 bg-blue-600 text-white rounded text-sm"
+                                                  type="button"
+                                                >
+                                                  {isSavingEdit ? 'Saving...' : 'Save'}
+                                                </button>
+                                              </div>
+                                            </div>
+                                          ) : (
+                                            <>
+                                              <div className="flex justify-between items-start mb-3">
+                                                <div className="flex-1">
+                                                  <p className="text-sm font-medium text-gray-900">
+                                                    {formattedDate}
+                                                  </p>
+                                                </div>
+                                                <div className="flex items-start gap-3">
+                                                  <div className="text-right">
+                                                    <p className="text-sm font-medium text-gray-900">
+                                                      {entry.start_time} - {entry.end_time}
+                                                    </p>
+                                                    {entry.lunch_break && (
+                                                      <p className="text-xs text-gray-500">
+                                                        Lunch Break: {entry.lunch_break}
+                                                      </p>
+                                                    )}
+                                                    <p className="text-sm font-semibold text-blue-600 mt-1">
+                                                      {calculateDuration(entry.start_time, entry.end_time, entry.lunch_break).toFixed(1)} hrs
+                                                    </p>
+                                                  </div>
+                                                  {isAdmin && (
+                                                    <div className="flex items-center gap-2">
+                                                      <button
+                                                        onClick={() => startEditing(entry)}
+                                                        className="text-blue-600 hover:text-blue-800 p-1 rounded hover:bg-blue-50 transition-colors"
+                                                        title="Edit entry"
+                                                      >
+                                                        Edit
+                                                      </button>
+                                                      <button
+                                                        onClick={() => deleteEntry(entry.id)}
+                                                        className="text-red-500 hover:text-red-700 p-1 rounded hover:bg-red-50 transition-colors"
+                                                        title="Delete entry"
+                                                      >
+                                                        <Trash2 className="h-4 w-4" />
+                                                      </button>
+                                                    </div>
+                                                  )}
+                                                </div>
+                                              </div>
+
+                                              <div className="space-y-2">
+                                                {entry.notes && (
+                                                  <div>
+                                                    <p className="text-xs font-medium text-gray-700">Notes</p>
+                                                    <p className="text-sm text-gray-900">{entry.notes}</p>
+                                                  </div>
+                                                )}
+
+                                                {entry.expenses && entry.expenses.length > 0 && (
+                                                  <div>
+                                                    <p className="text-xs font-medium text-gray-700 mb-1">Expenses</p>
+                                                    <div className="space-y-2">
+                                                      {entry.expenses.map((expense, index) => (
+                                                        <div key={index} className="flex items-start justify-between bg-gray-50 p-2 rounded-lg">
+                                                          <div>
+                                                            <p className="text-xs text-gray-900">{expense.description}</p>
+                                                            {expense.receipt_url && (
+                                                              <a
+                                                                href={expense.receipt_url}
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                className="text-xs text-blue-600 hover:text-blue-800"
+                                                              >
+                                                                View Receipt
+                                                              </a>
+                                                            )}
+                                                          </div>
+                                                          <p className="text-xs font-medium text-gray-900">
+                                                            ${expense.amount.toFixed(2)}
+                                                          </p>
+                                                        </div>
+                                                      ))}
+                                                    </div>
+                                                  </div>
+                                                )}
+                                              </div>
+                                            </>
+                                          )}
                                         </div>
                                       );
                                     })}
