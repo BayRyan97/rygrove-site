@@ -665,7 +665,9 @@ export function ViewActivityPage() {
       end_time: entry.end_time,
       location: entry.location,
       lunch_break: entry.lunch_break,
-      notes: entry.notes
+      notes: entry.notes,
+      work_type: entry.work_type,
+      work_type_other: entry.work_type_other
     });
   };
 
@@ -685,13 +687,15 @@ export function ViewActivityPage() {
       payload.location = editValues.location ?? '';
       payload.lunch_break = editValues.lunch_break ?? null;
       payload.notes = editValues.notes ?? null;
+      payload.work_type = editValues.work_type ?? null;
+      payload.work_type_other = editValues.work_type_other ?? null;
 
       const { data, error } = await supabase
         .from('time_entries')
         .update(payload)
         .eq('id', entryId)
         .select(
-          `id, date, start_time, end_time, location, lunch_break, notes, created_at, user_id, full_name, is_full_day, expenses (amount, description, receipt_url)`
+          `id, date, start_time, end_time, location, lunch_break, notes, created_at, user_id, full_name, is_full_day, work_type, work_type_other, expenses (amount, description, receipt_url)`
         )
         .single();
 
@@ -1183,6 +1187,57 @@ export function ViewActivityPage() {
                                                   className="w-full mt-1 p-2 border rounded"
                                                   placeholder="00:30"
                                                 />
+                                              </div>
+
+                                              <div>
+                                                <label className="text-xs text-gray-600 block mb-2">Work Type (required)</label>
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
+                                                  {[
+                                                    { key: 'Contract', label: 'Contract' },
+                                                    { key: 'Time and material', label: 'Time and material' },
+                                                    { key: 'Additional to the contract', label: 'Additional to the contract' },
+                                                    { key: 'Other', label: 'Other' }
+                                                  ].map((opt) => (
+                                                    <label key={opt.key} className="flex items-center space-x-2">
+                                                      <input
+                                                        type="radio"
+                                                        name={`work_type_${entry.id}`}
+                                                        value={opt.key}
+                                                        checked={editValues.work_type?.[0] === opt.key}
+                                                        onChange={(e) => {
+                                                          if (e.target.checked) {
+                                                            setEditValues(prev => ({
+                                                              ...(prev || {}),
+                                                              work_type: [opt.key],
+                                                              work_type_other: opt.key !== 'Other' ? null : prev?.work_type_other
+                                                            }));
+                                                          }
+                                                        }}
+                                                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+                                                      />
+                                                      <span className="text-sm text-gray-700">{opt.label}</span>
+                                                    </label>
+                                                  ))}
+                                                </div>
+
+                                                {/* Other text input */}
+                                                {editValues.work_type?.[0] === 'Other' && (
+                                                  <div className="mt-2">
+                                                    <input
+                                                      type="text"
+                                                      value={editValues.work_type_other || ''}
+                                                      onChange={(e) =>
+                                                        setEditValues(prev => ({
+                                                          ...(prev || {}),
+                                                          work_type_other: e.target.value
+                                                        }))
+                                                      }
+                                                      className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                                                      placeholder="Describe other work type"
+                                                      required={editValues.work_type?.[0] === 'Other'}
+                                                    />
+                                                  </div>
+                                                )}
                                               </div>
 
                                               <div>

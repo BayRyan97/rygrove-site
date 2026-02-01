@@ -381,7 +381,9 @@ function AdminPage() {
           location: editForm.location,
           lunch_break: editForm.lunch_break,
           notes: editForm.notes,
-          is_full_day: editForm.is_full_day
+          is_full_day: editForm.is_full_day,
+          work_type: editForm.work_type,
+          work_type_other: editForm.work_type_other
         })
         .eq('id', editingEntry);
 
@@ -840,8 +842,9 @@ function AdminPage() {
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {filteredTimeEntries.map((entry) => (
-                  <tr key={entry.id} className="hover:bg-gray-50">
-                    {editingEntry === entry.id ? (
+                  <React.Fragment key={entry.id}>
+                    <tr className="hover:bg-gray-50">
+                      {editingEntry === entry.id ? (
                       <>
                         <td className="px-4 py-4 whitespace-nowrap">
                           <div className="flex items-center space-x-2">
@@ -967,6 +970,65 @@ function AdminPage() {
                       </>
                     )}
                   </tr>
+                  {editingEntry === entry.id && (
+                    <tr key={`${entry.id}-edit`} className="bg-blue-50">
+                      <td colSpan={8} className="px-4 py-4">
+                        <div className="space-y-3">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Work Type (required)</label>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
+                              {[
+                                { key: 'Contract', label: 'Contract' },
+                                { key: 'Time and material', label: 'Time and material' },
+                                { key: 'Additional to the contract', label: 'Additional to the contract' },
+                                { key: 'Other', label: 'Other' }
+                              ].map((opt) => (
+                                <label key={opt.key} className="flex items-center space-x-2">
+                                  <input
+                                    type="radio"
+                                    name={`work_type_${entry.id}`}
+                                    value={opt.key}
+                                    checked={editForm.work_type?.[0] === opt.key}
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        setEditForm({
+                                          ...editForm,
+                                          work_type: [opt.key],
+                                          work_type_other: opt.key !== 'Other' ? null : editForm.work_type_other
+                                        });
+                                      }
+                                    }}
+                                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+                                  />
+                                  <span className="text-sm text-gray-700">{opt.label}</span>
+                                </label>
+                              ))}
+                            </div>
+
+                            {/* Other text input */}
+                            {editForm.work_type?.[0] === 'Other' && (
+                              <div className="mt-2">
+                                <input
+                                  type="text"
+                                  value={editForm.work_type_other || ''}
+                                  onChange={(e) => {
+                                    setEditForm({
+                                      ...editForm,
+                                      work_type_other: e.target.value
+                                    });
+                                  }}
+                                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                                  placeholder="Describe other work type"
+                                  required={editForm.work_type?.[0] === 'Other'}
+                                />
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  </React.Fragment>
                 ))}
               </tbody>
             </table>
