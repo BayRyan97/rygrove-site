@@ -230,7 +230,7 @@ function AdminPage() {
   };
 
   const resetUserPassword = async (userId: string, userEmail: string) => {
-    if (!window.confirm('This will generate a temporary password for the user. Continue?')) {
+    if (!window.confirm(`Reset password for ${userEmail}? A temporary password will be generated.`)) {
       return;
     }
 
@@ -238,19 +238,37 @@ function AdminPage() {
     setResetPasswordUserId(userId);
 
     try {
-      // Generate a temporary password
-      const tempPassword = `Temp${Math.random().toString(36).slice(-8)}!`;
+      // Get the current session to include auth header
+      const { data: { session } } = await supabase.auth.getSession();
       
-      // Send password reset email with the temporary password
-      const { error } = await supabase.auth.resetPasswordForEmail(userEmail, {
-        redirectTo: `${window.location.origin}`,
-      });
+      // Call the Edge Function to reset password server-side
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const response = await fetch(
+        `${supabaseUrl}/functions/v1/reset-user-password`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session?.access_token || ''}`
+          },
+          body: JSON.stringify({ userId })
+        }
+      );
 
-      if (error) throw error;
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to reset password');
+      }
 
-      // Show the temporary password to the admin
-      alert(`Password reset email sent to ${userEmail}.\n\nYou can also provide this temporary password: ${tempPassword}\n\nPlease share this with the user and ask them to change it after logging in.`);
-      
+      const result = await response.json();
+      const tempPassword = result.tempPassword;
+
+      alert(
+        `Password reset successfully!\n\n` +
+        `Email: ${userEmail}\n` +
+        `Temporary Password: ${tempPassword}\n\n` +
+        `Please share this password with the user. They should change it after logging in.`
+      );
     } catch (error) {
       console.error('Error resetting password:', error);
       alert(`Failed to reset password: ${error instanceof Error ? error.message : 'Unknown error'}`);
