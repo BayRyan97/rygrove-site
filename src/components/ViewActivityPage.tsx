@@ -266,16 +266,24 @@ export function ViewActivityPage() {
       });
 
       const uniqueUsers = Array.from(new Set(entries.map(entry => entry.full_name))).sort();
-      const colorMap = createColorMapper(uniqueUsers);
+      const sortedDates = Object.keys(data).sort();
 
       return {
-        labels: Object.keys(data).sort(),
-        datasets: uniqueUsers.map(user => ({
-          label: user,
-          data: Object.keys(data).sort().map(date => data[date][user]?.hours || 0),
-          backgroundColor: colorMap.get(user) || generateUniqueColor(0),
-          locationData: Object.keys(data).sort().map(date => data[date][user]?.locations || []),
-        }))
+        labels: sortedDates,
+        datasets: uniqueUsers.map((user, userIndex) => {
+          const barColors = sortedDates.map((date, dateIndex) => {
+            // Generate unique color per bar to avoid repetition across wide date ranges
+            const colorIndex = userIndex * sortedDates.length + dateIndex;
+            return generateUniqueColor(colorIndex);
+          });
+          
+          return {
+            label: user,
+            data: sortedDates.map(date => data[date][user]?.hours || 0),
+            backgroundColor: barColors,
+            locationData: sortedDates.map(date => data[date][user]?.locations || []),
+          };
+        })
       };
     } catch (error) {
       console.error('Error generating chart data:', error);
