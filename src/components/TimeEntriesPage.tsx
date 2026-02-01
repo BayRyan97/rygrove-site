@@ -665,24 +665,21 @@ export function TimeEntriesPage() {
                     ].map((opt) => (
                       <label key={opt.key} className="flex items-center space-x-2">
                         <input
-                          type="checkbox"
-                          checked={entry.work_type?.includes(opt.key) ?? false}
+                          type="radio"
+                          name={`work_type_${entryIndex}`}
+                          value={opt.key}
+                          checked={entry.work_type?.[0] === opt.key}
                           onChange={(e) => {
-                            const newEntries = [...entries];
-                            const arr = newEntries[entryIndex].work_type || [];
                             if (e.target.checked) {
-                              arr.push(opt.key);
-                            } else {
-                              const idx = arr.indexOf(opt.key);
-                              if (idx > -1) arr.splice(idx, 1);
-                              if (opt.key === 'Other') {
+                              const newEntries = [...entries];
+                              newEntries[entryIndex].work_type = [opt.key];
+                              if (opt.key !== 'Other') {
                                 newEntries[entryIndex].work_type_other = null;
                               }
+                              setEntries(newEntries);
                             }
-                            newEntries[entryIndex].work_type = arr;
-                            setEntries(newEntries);
                           }}
-                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
                         />
                         <span className="text-sm text-gray-700">{opt.label}</span>
                       </label>
@@ -690,7 +687,7 @@ export function TimeEntriesPage() {
                   </div>
 
                   {/* Other text input */}
-                  {entry.work_type?.includes('Other') && (
+                  {entry.work_type?.[0] === 'Other' && (
                     <div className="mt-2">
                       <input
                         type="text"
@@ -702,7 +699,7 @@ export function TimeEntriesPage() {
                         }}
                         className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                         placeholder="Describe other work type"
-                        required={entry.work_type?.includes('Other')}
+                        required={entry.work_type?.[0] === 'Other'}
                       />
                     </div>
                   )}
