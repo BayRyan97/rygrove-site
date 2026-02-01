@@ -14,6 +14,8 @@ interface TimeEntry {
   user_id: string;
   full_name: string;
   is_full_day: boolean;
+  work_type?: string[] | null;
+  work_type_other?: string | null;
 }
 
 interface UserProfile {
@@ -289,6 +291,8 @@ function AdminPage() {
       'Lunch Break',
       'Hours',
       'Full Day',
+      'Work Type',
+      'Work Type Other',
       'Notes',
       'User ID',
       'Entry ID'
@@ -304,6 +308,8 @@ function AdminPage() {
       entry.lunch_break || '',
       calculateTotalHours(entry),
       entry.is_full_day ? 'Yes' : 'No',
+      entry.work_type?.join('; ') || '',
+      entry.work_type_other || '',
       entry.notes || '',
       entry.user_id,
       entry.id

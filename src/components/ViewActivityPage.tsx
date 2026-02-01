@@ -36,6 +36,8 @@ interface TimeEntry {
   user_id: string;
   full_name: string;
   is_full_day: boolean;
+  work_type?: string[] | null;
+  work_type_other?: string | null;
   expenses: {
     amount: number;
     description: string;
@@ -601,6 +603,8 @@ export function ViewActivityPage() {
           user_id,
           full_name,
           is_full_day,
+          work_type,
+          work_type_other,
           expenses (amount, description, receipt_url)
         `)
         .gte('date', startDate)
@@ -716,6 +720,8 @@ export function ViewActivityPage() {
         'Lunch Break',
         'Hours',
         'Full Day',
+        'Work Type',
+        'Work Type Other',
         'Notes',
         'Expense Amount',
         'Expense Description',
@@ -738,6 +744,8 @@ export function ViewActivityPage() {
               entry.lunch_break
             ).toString(),
             entry.is_full_day ? 'Yes' : 'No',
+            entry.work_type?.join('; ') || '',
+            entry.work_type_other || '',
             entry.notes || ''
           ];
 
