@@ -31,6 +31,8 @@ interface TimeEntry {
   user_id: string;
   full_name: string;
   expenses: Expense[];
+  work_type?: string[];
+  work_type_other?: string | null;
 }
 
 const LUNCH_BREAK_OPTIONS = [
@@ -97,7 +99,9 @@ export function TimeEntriesPage() {
     notes: '',
     user_id: userId,
     full_name: currentUserProfile?.full_name || '',
-    expenses: []
+    expenses: [],
+    work_type: [],
+    work_type_other: null
   });
 
   const createDefaultExpense = (): Expense => ({
@@ -191,6 +195,18 @@ export function TimeEntriesPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    // Validate work_type selection: at least one must be selected per entry
+    for (const entry of entries) {
+      if (!entry.work_type || entry.work_type.length === 0) {
+        alert('Please select at least one Work Type for every time entry.');
+        return;
+      }
+      if (entry.work_type.includes('Other') && (!entry.work_type_other || entry.work_type_other.trim() === '')) {
+        alert('Please provide a description for "Other" work type.');
+        return;
+      }
+    }
+
     const entriesOver8Hours = entries.filter(entry => calculateEntryHours(entry) > 8);
 
     if (entriesOver8Hours.length > 0) {
@@ -211,6 +227,16 @@ export function TimeEntriesPage() {
 
     try {
       for (const entry of entries) {
+        // Prepare work_type payload. If 'Other' selected, concat reason into the stored value.
+        const workTypeForDb = (entry.work_type || []).map(wt => {
+          if (wt === 'Other') {
+            return entry.work_type_other && entry.work_type_other.trim() !== ''
+              ? `Other: ${entry.work_type_other.trim()}`
+              : 'Other';
+          }
+          return wt;
+        });
+
         const { data: timeEntry, error: timeEntryError } = await supabase
           .from('time_entries')
           .insert({
@@ -222,7 +248,9 @@ export function TimeEntriesPage() {
             lunch_break: entry.has_lunch_break ? entry.lunch_break : null,
             notes: entry.notes,
             user_id: isAdmin ? entry.user_id : userId,
-            full_name: isAdmin ? entry.full_name : currentUserProfile?.full_name
+            full_name: isAdmin ? entry.full_name : currentUserProfile?.full_name,
+            work_type: workTypeForDb,
+            work_type_other: entry.work_type_other || null
           })
           .select()
           .single();
@@ -625,19 +653,74 @@ export function TimeEntriesPage() {
                   )}
                 </div>
 
+                {/* Work Type (required) - placed above Notes */}
                 <div className="lg:col-span-3">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
-                  <textarea
-                    value={entry.notes || ''}
-                    onChange={(e) => {
-                      const newEntries = [...entries];
-                      newEntries[entryIndex].notes = e.target.value;
-                      setEntries(newEntries);
-                    }}
-                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                    rows={2}
-                    placeholder="Add any notes or comments..."
-                  />
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Work Type (required)</label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
+                    {[
+                      { key: 'Contract', label: 'Contract' },
+                      { key: 'Time and material', label: 'Time and material' },
+                      { key: 'Additional to the contract', label: 'Additional to the contract' },
+                      { key: 'Other', label: 'Other' }
+                    ].map((opt) => (
+                      <label key={opt.key} className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          checked={entry.work_type?.includes(opt.key) ?? false}
+                          onChange={(e) => {
+                            const newEntries = [...entries];
+                            const arr = newEntries[entryIndex].work_type || [];
+                            if (e.target.checked) {
+                              arr.push(opt.key);
+                            } else {
+                              const idx = arr.indexOf(opt.key);
+                              if (idx > -1) arr.splice(idx, 1);
+                              if (opt.key === 'Other') {
+                                newEntries[entryIndex].work_type_other = null;
+                              }
+                            }
+                            newEntries[entryIndex].work_type = arr;
+                            setEntries(newEntries);
+                          }}
+                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                        />
+                        <span className="text-sm text-gray-700">{opt.label}</span>
+                      </label>
+                    ))}
+                  </div>
+
+                  {/* Other text input */}
+                  {entry.work_type?.includes('Other') && (
+                    <div className="mt-2">
+                      <input
+                        type="text"
+                        value={entry.work_type_other || ''}
+                        onChange={(e) => {
+                          const newEntries = [...entries];
+                          newEntries[entryIndex].work_type_other = e.target.value;
+                          setEntries(newEntries);
+                        }}
+                        className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                        placeholder="Describe other work type"
+                        required={entry.work_type?.includes('Other')}
+                      />
+                    </div>
+                  )}
+
+                  <div className="mt-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                    <textarea
+                      value={entry.notes || ''}
+                      onChange={(e) => {
+                        const newEntries = [...entries];
+                        newEntries[entryIndex].notes = e.target.value;
+                        setEntries(newEntries);
+                      }}
+                      className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                      rows={2}
+                      placeholder="Add any notes or comments..."
+                    />
+                  </div>
                 </div>
               </div>
 
