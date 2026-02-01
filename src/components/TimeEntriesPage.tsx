@@ -116,6 +116,56 @@ export function TimeEntriesPage() {
     retailer_name: ''
   });
 
+  const fetchLocations = async () => {
+    try {
+      // Fetch ALL time entries using pagination to bypass 1000 row limit
+      let allEntries: any[] = [];
+      let page = 0;
+      const pageSize = 1000;
+      let hasMore = true;
+      
+      while (hasMore) {
+        const { data, error } = await supabase
+          .from('time_entries')
+          .select('location')
+          .not('location', 'is', null)
+          .range(page * pageSize, (page + 1) * pageSize - 1);
+
+        if (error) throw error;
+        
+        if (data && data.length > 0) {
+          allEntries = [...allEntries, ...data];
+          hasMore = data.length === pageSize;
+          page++;
+        } else {
+          hasMore = false;
+        }
+      }
+      
+      const locationsFromEntries = Array.from(new Set(allEntries.map(entry => entry.location)));
+
+      // Also fetch saved estimate job names and include them as possible locations
+      const { data: estimateData, error: estimateError } = await supabase
+        .from('estimate_worksheets')
+        .select('job_name');
+
+      if (estimateError) {
+        console.error('Error fetching estimates for locations:', estimateError);
+      }
+
+      const estimateNames: string[] = (estimateData || [])
+        .map((e: any) => (e.job_name || '').replace(/ v\d+$/, ''))
+        .filter((n: string) => n && n.trim().length > 0);
+      console.log('Estimate job names:', estimateNames);
+
+      const combined = Array.from(new Set([...locationsFromEntries, ...estimateNames])).sort();
+      console.log('Final combined locations:', combined);
+      setLocations(combined);
+    } catch (error) {
+      console.error('Error fetching locations:', error);
+    }
+  };
+
   useEffect(() => {
     const fetchUserData = async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -144,36 +194,6 @@ export function TimeEntriesPage() {
 
           setEntries([createDefaultEntry()]);
         }
-      }
-    };
-
-    const fetchLocations = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('time_entries')
-          .select('location')
-          .not('location', 'is', null);
-
-        if (error) throw error;
-        const locationsFromEntries = Array.from(new Set(data.map(entry => entry.location)));
-
-        // Also fetch saved estimate job names and include them as possible locations
-        const { data: estimateData, error: estimateError } = await supabase
-          .from('estimate_worksheets')
-          .select('job_name');
-
-        if (estimateError) {
-          console.error('Error fetching estimates for locations:', estimateError);
-        }
-
-        const estimateNames: string[] = (estimateData || [])
-          .map((e: any) => (e.job_name || '').replace(/ v\d+$/, ''))
-          .filter((n: string) => n && n.trim().length > 0);
-
-        const combined = Array.from(new Set([...locationsFromEntries, ...estimateNames])).sort();
-        setLocations(combined);
-      } catch (error) {
-        console.error('Error fetching locations:', error);
       }
     };
 
@@ -346,6 +366,7 @@ export function TimeEntriesPage() {
       }
 
       setEntries([createDefaultEntry()]);
+      await fetchLocations();
       alert('Time entries and expenses submitted successfully!');
     } catch (error) {
       console.error('Error submitting entries:', error);
