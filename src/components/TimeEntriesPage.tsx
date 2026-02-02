@@ -100,8 +100,8 @@ export function TimeEntriesPage() {
     has_lunch_break: true,
     lunch_break: '00:30',
     notes: '',
-    user_id: userId,
-    full_name: currentUserProfile?.full_name || '',
+    user_id: isAdmin ? '' : userId,
+    full_name: isAdmin ? '' : (currentUserProfile?.full_name || ''),
     expenses: [],
     work_type: [],
     work_type_other: null

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { format, parseISO, addDays, addWeeks, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, isBefore } from 'date-fns';
+import { format, parseISO, addDays, addWeeks, subWeeks, startOfWeek, endOfWeek, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isBefore } from 'date-fns';
 import { supabase } from '../lib/supabase';
-import { Plus, ChevronLeft, ChevronRight, Calendar, FolderKanban, AlertCircle, ChevronDown, ChevronRight as ChevronRightIcon, Trash2, X } from 'lucide-react';
+import { Plus, FolderKanban, AlertCircle, ChevronDown, ChevronRight as ChevronRightIcon, Trash2, X, StickyNote, Calendar as CalendarIcon } from 'lucide-react';
 
 interface PlannerProject {
   id: string;
@@ -31,6 +31,17 @@ interface PlannerTask {
   completed_date: string | null;
 }
 
+interface PlannerNote {
+  id: string;
+  project_id: string;
+  category_id: string | null;
+  title: string;
+  description: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
 // Category color palette
 const CATEGORY_COLORS = [
   { bg: 'from-purple-400 to-purple-600', light: 'from-purple-50 to-purple-100', hover: 'hover:from-purple-500 hover:to-purple-700', border: 'border-purple-400' },
@@ -48,13 +59,32 @@ export default function PlannerPage() {
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
   const [categories, setCategories] = useState<PlannerCategory[]>([]);
   const [tasks, setTasks] = useState<PlannerTask[]>([]);
+  const [notes, setNotes] = useState<PlannerNote[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
   const [currentUser, setCurrentUser] = useState<string>('');
 
-  // Viewport controls: show 6 weeks at a time
-  const VIEWPORT_WEEKS = 6;
-  const [viewportStart, setViewportStart] = useState(startOfWeek(new Date()));
+  // Calculate timeline from project dates with padding
+  const { viewportStart, viewportEnd } = useMemo(() => {
+    const selectedProject = projects.find(p => p.id === selectedProjectId);
+    
+    if (selectedProject?.start_date && selectedProject?.end_date) {
+      // Use project dates with 1 week padding on each side
+      const projectStart = parseISO(selectedProject.start_date);
+      const projectEnd = parseISO(selectedProject.end_date);
+      return {
+        viewportStart: subWeeks(startOfWeek(projectStart), 1),
+        viewportEnd: addWeeks(endOfWeek(projectEnd), 1)
+      };
+    }
+    
+    // Fallback: show current month if no project dates
+    const today = new Date();
+    return {
+      viewportStart: startOfMonth(today),
+      viewportEnd: endOfMonth(today)
+    };
+  }, [selectedProjectId, projects]);
 
   // Modal states
   const [showProjectModal, setShowProjectModal] = useState(false);
@@ -67,6 +97,9 @@ export default function PlannerPage() {
   const [editingProjectDates, setEditingProjectDates] = useState(false);
   const [hoveredTaskId, setHoveredTaskId] = useState<string | null>(null);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
+  const [showNoteModal, setShowNoteModal] = useState(false);
+  const [showPromoteNoteModal, setShowPromoteNoteModal] = useState(false);
+  const [promotingNote, setPromotingNote] = useState<PlannerNote | null>(null);
 
   // Category collapse states
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
@@ -82,6 +115,11 @@ export default function PlannerPage() {
     end_date: format(addDays(new Date(), 7), 'yyyy-MM-dd'),
     category_id: ''
   });
+  const [noteForm, setNoteForm] = useState({ title: '', description: '', category_id: '' });
+  const [promoteForm, setPromoteForm] = useState({
+    start_date: format(new Date(), 'yyyy-MM-dd'),
+    end_date: format(addDays(new Date(), 7), 'yyyy-MM-dd')
+  });
 
   useEffect(() => {
     const initPage = async () => {
@@ -95,6 +133,7 @@ export default function PlannerPage() {
   useEffect(() => {
     if (selectedProjectId) {
       fetchCategories();
+      fetchNotes();
     }
   }, [selectedProjectId]);
 
@@ -173,6 +212,26 @@ export default function PlannerPage() {
     }
 
     setTasks(data || []);
+  };
+
+  const fetchNotes = async () => {
+    if (!selectedProjectId) {
+      setNotes([]);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from('planner_notes')
+      .select('*')
+      .eq('project_id', selectedProjectId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching notes:', error);
+      return;
+    }
+
+    setNotes(data || []);
   };
 
   const createProject = async () => {
@@ -351,6 +410,92 @@ export default function PlannerPage() {
     await fetchTasks();
   };
 
+  const createNote = async () => {
+    if (!noteForm.title.trim() || !selectedProjectId) return;
+
+    const { error } = await supabase
+      .from('planner_notes')
+      .insert([{
+        project_id: selectedProjectId,
+        category_id: noteForm.category_id || null,
+        title: noteForm.title,
+        description: noteForm.description || null,
+        created_by: currentUser,
+        updated_by: currentUser
+      }]);
+
+    if (error) {
+      console.error('Error creating note:', error);
+      return;
+    }
+
+    setNoteForm({ title: '', description: '', category_id: '' });
+    setShowNoteModal(false);
+    await fetchNotes();
+  };
+
+  const deleteNote = async (noteId: string) => {
+    if (!confirm('Are you sure you want to delete this note?')) return;
+
+    const { error } = await supabase
+      .from('planner_notes')
+      .delete()
+      .eq('id', noteId);
+
+    if (error) {
+      console.error('Error deleting note:', error);
+      return;
+    }
+
+    await fetchNotes();
+  };
+
+  const promoteNoteToTask = async () => {
+    if (!promotingNote || !promoteForm.start_date || !promoteForm.end_date) return;
+    if (!promotingNote.category_id) {
+      alert('Note must have a category to be added to gantt chart');
+      return;
+    }
+
+    // Create task
+    const { error: taskError } = await supabase
+      .from('planner_tasks')
+      .insert([{
+        category_id: promotingNote.category_id,
+        name: promotingNote.title,
+        description: promotingNote.description || null,
+        start_date: promoteForm.start_date,
+        end_date: promoteForm.end_date,
+        created_by: currentUser,
+        updated_by: currentUser
+      }]);
+
+    if (taskError) {
+      console.error('Error creating task from note:', taskError);
+      alert(`Failed to create task: ${taskError.message}`);
+      return;
+    }
+
+    // Delete note
+    const { error: deleteError } = await supabase
+      .from('planner_notes')
+      .delete()
+      .eq('id', promotingNote.id);
+
+    if (deleteError) {
+      console.error('Error deleting note:', deleteError);
+    }
+
+    setPromotingNote(null);
+    setShowPromoteNoteModal(false);
+    setPromoteForm({
+      start_date: format(new Date(), 'yyyy-MM-dd'),
+      end_date: format(addDays(new Date(), 7), 'yyyy-MM-dd')
+    });
+    await fetchNotes();
+    await fetchTasks();
+  };
+
   const toggleCategoryCollapse = (categoryId: string) => {
     const newCollapsed = new Set(collapsedCategories);
     if (newCollapsed.has(categoryId)) {
@@ -409,42 +554,22 @@ export default function PlannerPage() {
 
   const getCategoryColor = (categoryId: string) => {
     const category = categories.find(c => c.id === categoryId);
-    if (!category) return CATEGORY_COLORS[0];
+    if (!category) return { ...CATEGORY_COLORS[0], isCustom: false as const, customColor: null as string | null };
     
-    // If custom color exists, create a color object from it
     if (category.custom_color) {
       return {
-        bg: `from-[${category.custom_color}] to-[${category.custom_color}]`,
-        light: `from-[${category.custom_color}]/10 to-[${category.custom_color}]/20`,
-        hover: `hover:from-[${category.custom_color}] hover:to-[${category.custom_color}]`,
-        border: `border-[${category.custom_color}]`
+        ...CATEGORY_COLORS[0],
+        isCustom: true as const,
+        customColor: category.custom_color
       };
     }
     
     const colorIndex = category.color_index ?? 0;
-    return CATEGORY_COLORS[colorIndex % CATEGORY_COLORS.length];
+    return { ...CATEGORY_COLORS[colorIndex % CATEGORY_COLORS.length], isCustom: false as const, customColor: null as string | null };
   };
 
-  // Generate viewport weeks
-  const viewportEnd = addWeeks(viewportStart, VIEWPORT_WEEKS);
-  const viewportDays = eachDayOfInterval({ start: viewportStart, end: addDays(viewportEnd, -1) });
-
-  const weeks = useMemo(() => {
-    const weeksList = [];
-    let currentStart = startOfWeek(viewportStart);
-
-    for (let i = 0; i < VIEWPORT_WEEKS; i++) {
-      const weekEnd = endOfWeek(currentStart);
-      weeksList.push({
-        start: currentStart,
-        end: weekEnd,
-        days: eachDayOfInterval({ start: currentStart, end: weekEnd })
-      });
-      currentStart = addDays(weekEnd, 1);
-    }
-
-    return weeksList;
-  }, [viewportStart]);
+  // Generate viewport days
+  const viewportDays = eachDayOfInterval({ start: viewportStart, end: viewportEnd });
 
   const getTaskPosition = (task: PlannerTask) => {
     const taskStart = parseISO(task.start_date);
@@ -502,35 +627,13 @@ export default function PlannerPage() {
             Project Planner
           </h1>
           {isAdmin && (
-            <div className="flex gap-2">
-              <button
-                onClick={() => setShowProjectModal(true)}
-                className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-              >
-                <Plus size={16} className="mr-2" />
-                New Project
-              </button>
-              {selectedProjectId && (
-                <>
-                  <button
-                    onClick={() => setShowCategoryModal(true)}
-                    disabled={!selectedProjectId}
-                    className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
-                  >
-                    <Plus size={16} className="mr-2" />
-                    Category
-                  </button>
-                  <button
-                    onClick={() => setShowTaskModal(true)}
-                    disabled={categories.length === 0}
-                    className="flex items-center px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50"
-                  >
-                    <Plus size={16} className="mr-2" />
-                    Task
-                  </button>
-                </>
-              )}
-            </div>
+            <button
+              onClick={() => setShowProjectModal(true)}
+              className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            >
+              <Plus size={16} className="mr-2" />
+              New Project
+            </button>
           )}
         </div>
 
@@ -559,13 +662,13 @@ export default function PlannerPage() {
           if (!selectedProject) return null;
 
           return (
-            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-sm font-semibold text-gray-700">Project Timeline</h3>
+            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-3 border border-blue-200">
+              <div className="flex items-center justify-between mb-1.5">
+                <h3 className="text-xs font-semibold text-gray-700">Project Timeline</h3>
                 {isAdmin && !editingProjectDates && (
                   <button
                     onClick={() => setEditingProjectDates(true)}
-                    className="text-xs text-blue-600 hover:text-blue-800"
+                    className="text-[10px] text-blue-600 hover:text-blue-800"
                   >
                     Edit
                   </button>
@@ -573,23 +676,23 @@ export default function PlannerPage() {
               </div>
               
               {editingProjectDates ? (
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Start Date</label>
+                    <label className="block text-[10px] font-medium text-gray-600 mb-0.5">Start Date</label>
                     <input
                       type="date"
                       defaultValue={selectedProject.start_date || ''}
                       onChange={(e) => selectedProject.start_date = e.target.value}
-                      className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-2 py-1 border rounded text-xs focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">End Date</label>
+                    <label className="block text-[10px] font-medium text-gray-600 mb-0.5">End Date</label>
                     <input
                       type="date"
                       defaultValue={selectedProject.end_date || ''}
                       onChange={(e) => selectedProject.end_date = e.target.value}
-                      className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-2 py-1 border rounded text-xs focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                   <div className="col-span-2 flex gap-2">
@@ -599,32 +702,53 @@ export default function PlannerPage() {
                         selectedProject.start_date || null,
                         selectedProject.end_date || null
                       )}
-                      className="flex-1 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
+                      className="flex-1 px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-xs"
                     >
                       Save
                     </button>
                     <button
                       onClick={() => setEditingProjectDates(false)}
-                      className="flex-1 px-3 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 text-sm"
+                      className="flex-1 px-2 py-1 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 text-xs"
                     >
                       Cancel
                     </button>
                   </div>
                 </div>
               ) : (
-                <div className="grid grid-cols-2 gap-3 text-sm">
-                  <div>
-                    <span className="text-xs text-gray-600">Start:</span>
-                    <div className="font-medium text-gray-900">
-                      {selectedProject.start_date ? format(parseISO(selectedProject.start_date), 'MMM d, yyyy') : 'Not set'}
+                <div className="flex items-center justify-between">
+                  <div className="flex gap-4 text-xs">
+                    <div>
+                      <span className="text-[10px] text-gray-600">Start:</span>
+                      <span className="ml-1 font-medium text-gray-900">
+                        {selectedProject.start_date ? format(parseISO(selectedProject.start_date), 'MMM d, yyyy') : 'Not set'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-gray-600">End:</span>
+                      <span className="ml-1 font-medium text-gray-900">
+                        {selectedProject.end_date ? format(parseISO(selectedProject.end_date), 'MMM d, yyyy') : 'Not set'}
+                      </span>
                     </div>
                   </div>
-                  <div>
-                    <span className="text-xs text-gray-600">End:</span>
-                    <div className="font-medium text-gray-900">
-                      {selectedProject.end_date ? format(parseISO(selectedProject.end_date), 'MMM d, yyyy') : 'Not set'}
+                  {isAdmin && (
+                    <div className="flex gap-1.5">
+                      <button
+                        onClick={() => setShowCategoryModal(true)}
+                        className="flex items-center px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-[10px]"
+                      >
+                        <Plus size={12} className="mr-1" />
+                        Category
+                      </button>
+                      <button
+                        onClick={() => setShowTaskModal(true)}
+                        disabled={categories.length === 0}
+                        className="flex items-center px-2 py-1 bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50 text-[10px]"
+                      >
+                        <Plus size={12} className="mr-1" />
+                        Task
+                      </button>
                     </div>
-                  </div>
+                  )}
                 </div>
               )}
             </div>
@@ -639,11 +763,11 @@ export default function PlannerPage() {
             {/* Left Column - Frozen */}
             <div className="w-72 flex-shrink-0 bg-white/50 backdrop-blur-sm border-r border-gray-200/50 flex flex-col">
               {/* Header */}
-              <div className="sticky top-0 bg-white/90 backdrop-blur-md p-4 font-bold text-base text-gray-900 h-20 flex items-center z-10">
+              <div className="sticky top-0 bg-white/90 backdrop-blur-md p-4 font-bold text-base text-gray-900 flex items-center z-10" style={{ height: '68px' }}>
                 Tasks
               </div>
               {/* Content */}
-              <div className="overflow-y-auto flex-1 pt-6">
+              <div className="overflow-y-auto flex-1">
                   {groupedTasks.map((group, groupIdx) => (
                     <div key={groupIdx}>
                       {/* Category Header */}
@@ -726,62 +850,45 @@ export default function PlannerPage() {
 
               {/* Right Column - Scrollable Timeline */}
               <div className="flex-1 overflow-x-auto flex flex-col bg-gradient-to-br from-white to-gray-50/30">
-                {/* Navigation and Headers */}
-                <div className="flex items-stretch sticky top-0 z-10 bg-white/95 backdrop-blur-md">
-                  <button
-                    onClick={() => setViewportStart(addWeeks(viewportStart, -1))}
-                    className="p-3 hover:bg-gray-200 flex-shrink-0"
-                    title="Previous week"
-                  >
-                    <ChevronLeft size={20} />
-                  </button>
-
-                  <div className="flex-1 flex flex-col shadow-sm border-l border-gray-200">
-                    {/* Month row */}
-                    <div className="flex h-8 items-center border-b border-gray-200">
-                      {viewportDays.reduce((acc, day, idx) => {
-                        const monthKey = format(day, 'MMMM yyyy');
-                        const prevDay = idx > 0 ? viewportDays[idx - 1] : null;
-                        const prevMonth = prevDay ? format(prevDay, 'MMMM yyyy') : null;
-                        
-                        if (idx === 0 || monthKey !== prevMonth) {
-                          // Find how many days in this month section
-                          let monthDayCount = 1;
-                          for (let i = idx + 1; i < viewportDays.length; i++) {
-                            if (format(viewportDays[i], 'MMMM yyyy') === monthKey) {
-                              monthDayCount++;
-                            } else {
-                              break;
-                            }
-                          }
-                          acc.push(
-                            <div
-                              key={`month-${idx}`}
-                              className="text-xs font-bold text-gray-700 px-2 flex items-center"
-                              style={{ width: `${monthDayCount * 70}px`, flexShrink: 0 }}
-                            >
-                              {format(day, 'MMMM yyyy')}
-                            </div>
-                          );
-                        }
-                        return acc;
-                      }, [] as JSX.Element[])}
-                    </div>
-                    
-                    {/* Day row */}
-                    <div className="flex h-12 items-center">
+                {/* Headers */}
+                <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-md" style={{ height: '68px' }}>
+                  <div className="flex-1 flex flex-col shadow-sm h-full">
+                    {/* Day row with month labels */}
+                    <div className="flex items-center border-b border-gray-200 h-full">
                       {viewportDays.map((day, dayIdx) => {
                         const isToday = isSameDay(day, new Date());
+                        const isFirstOfMonth = format(day, 'd') === '1';
+                        const monthName = format(day, 'MMM');
+                        const year = format(day, 'yyyy');
+                        
                         return (
                           <div
                             key={dayIdx}
-                            className={`p-2 text-center text-xs font-medium transition-all duration-200 ${
+                            className={`text-center text-xs font-medium transition-all duration-200 flex flex-col ${
                               isToday ? 'bg-gradient-to-b from-blue-500 to-blue-600 text-white shadow-lg scale-105 rounded-t-lg mx-0.5' : 'text-gray-600'
                             }`}
                             style={{ width: '70px', flexShrink: 0 }}
                           >
-                            <div className="font-bold text-[10px] uppercase tracking-wider">{format(day, 'EEE').substring(0, 3)}</div>
-                            <div className={`text-lg mt-0.5 ${
+                            {/* Month label - prominent on 1st, subtle on other days */}
+                            <div className={`text-[9px] uppercase tracking-wide pt-1 ${
+                              isToday 
+                                ? 'text-white font-bold' 
+                                : isFirstOfMonth 
+                                ? 'text-gray-800 font-bold' 
+                                : 'text-gray-400 font-medium'
+                            }`}>
+                              {isFirstOfMonth ? `${monthName} ${year}` : monthName}
+                            </div>
+                            
+                            {/* Day of week */}
+                            <div className={`text-[10px] uppercase tracking-wider ${
+                              isToday ? 'font-bold text-white/90' : 'font-bold'
+                            }`}>
+                              {format(day, 'EEE').substring(0, 3)}
+                            </div>
+                            
+                            {/* Day number */}
+                            <div className={`text-lg pb-1 ${
                               isToday ? 'font-bold' : 'font-semibold'
                             }`}>
                               {format(day, 'd')}
@@ -791,18 +898,10 @@ export default function PlannerPage() {
                       })}
                     </div>
                   </div>
-
-                  <button
-                    onClick={() => setViewportStart(addWeeks(viewportStart, 1))}
-                    className="p-3 hover:bg-gray-200 flex-shrink-0"
-                    title="Next week"
-                  >
-                    <ChevronRight size={20} />
-                  </button>
                 </div>
 
                 {/* Task Bars Container */}
-                <div className="flex-1 relative pt-6" style={{ backgroundImage: `linear-gradient(90deg, transparent 0%, transparent calc(70px - 1px), rgba(209, 213, 219, 0.3) calc(70px - 1px), rgba(209, 213, 219, 0.3) 70px)`, backgroundSize: '70px 100%', backgroundRepeat: 'repeat' }}>
+                <div className="flex-1 relative" style={{ backgroundImage: `linear-gradient(90deg, transparent 0%, transparent calc(70px - 1px), rgba(209, 213, 219, 0.3) calc(70px - 1px), rgba(209, 213, 219, 0.3) 70px)`, backgroundSize: '70px 100%', backgroundRepeat: 'repeat' }}>
                   <div style={{ minWidth: `${viewportDays.length * 70}px` }}>
                     {groupedTasks.map((group, groupIdx) => {
                       // Calculate min/max dates for category
@@ -827,6 +926,7 @@ export default function PlannerPage() {
                       {/* Category spacing */}
                       <div 
                         className={`bg-gradient-to-r ${getCategoryColor(group.category.id).light} h-12 cursor-pointer hover:shadow-inner transition-all duration-200 relative`}
+                        style={{ minWidth: `${viewportDays.length * 70}px` }}
                         onClick={() => toggleCategoryCollapse(group.category.id)}
                       >
                         {hasTasks && (
@@ -855,7 +955,11 @@ export default function PlannerPage() {
                         const barWidthPx = position ? (position.endIndex - position.startIndex + 1) * dayWidth : 0;
 
                         return (
-                          <div key={taskIdx} className="h-14 flex items-center hover:bg-white/40 transition-colors relative">
+                          <div 
+                            key={taskIdx} 
+                            className="h-14 flex items-center hover:bg-white/40 transition-colors relative"
+                            style={{ minWidth: `${viewportDays.length * 70}px` }}
+                          >
                             {position && (
                               <div
                                 onClick={() => openTaskDetail(task)}
@@ -904,6 +1008,96 @@ export default function PlannerPage() {
               </div>
             </div>
           </div>
+      )}
+
+      {/* Notes Board */}
+      {selectedProjectId && (
+        <div className="bg-gradient-to-br from-gray-50 to-white rounded-2xl shadow-2xl p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="flex items-center text-xl font-bold text-gray-900">
+              <StickyNote className="mr-2" size={24} />
+              Notes Board
+            </h2>
+            <button
+              onClick={() => setShowNoteModal(true)}
+              className="flex items-center px-3 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 shadow-md"
+            >
+              <Plus size={16} className="mr-2" />
+              New Note
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {notes.map((note, idx) => {
+              const categoryColor = note.category_id ? getCategoryColor(note.category_id) : null;
+              const bgColor = categoryColor 
+                ? categoryColor.light.replace('from-', 'bg-').replace(' to-', '').split(' ')[0]
+                : 'bg-yellow-100';
+              const borderColor = categoryColor ? categoryColor.border : 'border-yellow-300';
+              const rotation = idx % 3 === 0 ? '-rotate-1' : idx % 3 === 1 ? 'rotate-1' : 'rotate-0';
+
+              return (
+                <div
+                  key={note.id}
+                  className={`${bgColor} ${borderColor} border-2 rounded-lg p-4 shadow-lg hover:shadow-2xl transition-all duration-200 ${rotation} relative group`}
+                  style={{ minHeight: '180px' }}
+                >
+                  {/* Delete button */}
+                  <button
+                    onClick={() => deleteNote(note.id)}
+                    className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 p-1 hover:bg-red-100 rounded text-red-600 transition-opacity"
+                    title="Delete note"
+                  >
+                    <X size={16} />
+                  </button>
+
+                  {/* Title */}
+                  <h3 className="font-bold text-gray-900 mb-2 pr-6">
+                    {note.title}
+                  </h3>
+
+                  {/* Category badge */}
+                  {note.category_id && (() => {
+                    const category = categories.find(c => c.id === note.category_id);
+                    return category ? (
+                      <div className="inline-block px-2 py-0.5 bg-white/50 rounded-full text-xs font-medium text-gray-700 mb-2">
+                        {category.name}
+                      </div>
+                    ) : null;
+                  })()}
+
+                  {/* Description */}
+                  {note.description && (
+                    <p className="text-sm text-gray-700 mb-3 whitespace-pre-wrap">
+                      {note.description}
+                    </p>
+                  )}
+
+                  {/* Promote to Task button */}
+                  {note.category_id && (
+                    <button
+                      onClick={() => {
+                        setPromotingNote(note);
+                        setShowPromoteNoteModal(true);
+                      }}
+                      className="absolute bottom-3 right-3 flex items-center gap-1 px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-xs shadow-md"
+                    >
+                      <CalendarIcon size={12} />
+                      Add to Gantt
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+
+            {notes.length === 0 && (
+              <div className="col-span-full text-center py-12 text-gray-400">
+                <StickyNote size={48} className="mx-auto mb-3 opacity-30" />
+                <p>No notes yet. Click "New Note" to create one!</p>
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
       {/* Modals */}
@@ -1247,6 +1441,100 @@ export default function PlannerPage() {
                   </button>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* New Note Modal */}
+      {showNoteModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-96">
+            <h2 className="text-xl font-bold mb-4">New Note</h2>
+            <input
+              type="text"
+              placeholder="Note title"
+              value={noteForm.title}
+              onChange={(e) => setNoteForm({ ...noteForm, title: e.target.value })}
+              className="w-full px-3 py-2 border rounded-lg mb-3 focus:ring-2 focus:ring-yellow-500"
+            />
+            <textarea
+              placeholder="Description (optional)"
+              value={noteForm.description}
+              onChange={(e) => setNoteForm({ ...noteForm, description: e.target.value })}
+              className="w-full px-3 py-2 border rounded-lg mb-3 focus:ring-2 focus:ring-yellow-500"
+              rows={4}
+            />
+            <select
+              value={noteForm.category_id}
+              onChange={(e) => setNoteForm({ ...noteForm, category_id: e.target.value })}
+              className="w-full px-3 py-2 border rounded-lg mb-4 focus:ring-2 focus:ring-yellow-500"
+            >
+              <option value="">No category (just a note)</option>
+              {categories.map(c => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+            <div className="flex gap-2">
+              <button
+                onClick={createNote}
+                className="flex-1 px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600"
+              >
+                Create
+              </button>
+              <button
+                onClick={() => setShowNoteModal(false)}
+                className="flex-1 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Promote Note to Task Modal */}
+      {showPromoteNoteModal && promotingNote && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-96">
+            <h2 className="text-xl font-bold mb-4">Add to Gantt Chart</h2>
+            <p className="text-sm text-gray-600 mb-4">
+              Set dates to add "<strong>{promotingNote.title}</strong>" to the gantt chart as a task.
+            </p>
+            <div className="mb-3">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
+              <input
+                type="date"
+                value={promoteForm.start_date}
+                onChange={(e) => setPromoteForm({ ...promoteForm, start_date: e.target.value })}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-green-500"
+              />
+            </div>
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">End Date</label>
+              <input
+                type="date"
+                value={promoteForm.end_date}
+                onChange={(e) => setPromoteForm({ ...promoteForm, end_date: e.target.value })}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-green-500"
+              />
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={promoteNoteToTask}
+                className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+              >
+                Add to Gantt
+              </button>
+              <button
+                onClick={() => {
+                  setShowPromoteNoteModal(false);
+                  setPromotingNote(null);
+                }}
+                className="flex-1 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300"
+              >
+                Cancel
+              </button>
             </div>
           </div>
         </div>
