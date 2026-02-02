@@ -1,14 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { format, parseISO, addDays, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, isAfter, isBefore } from 'date-fns';
+import { format, parseISO, addDays, addWeeks, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, isBefore } from 'date-fns';
 import { supabase } from '../lib/supabase';
-import { Plus, ChevronLeft, ChevronRight, Calendar, FolderKanban, AlertCircle, Check } from 'lucide-react';
+import { Plus, ChevronLeft, ChevronRight, Calendar, FolderKanban, AlertCircle } from 'lucide-react';
 
 interface PlannerProject {
   id: string;
   name: string;
   description: string | null;
-  start_date: string | null;
-  end_date: string | null;
   created_by: string;
 }
 
@@ -27,14 +25,6 @@ interface PlannerTask {
   start_date: string;
   end_date: string;
   completed_date: string | null;
-  created_by: string;
-}
-
-interface PlannerTaskNote {
-  id: string;
-  task_id: string;
-  note_text: string;
-  created_at: string;
 }
 
 export default function PlannerPage() {
@@ -42,21 +32,18 @@ export default function PlannerPage() {
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
   const [categories, setCategories] = useState<PlannerCategory[]>([]);
   const [tasks, setTasks] = useState<PlannerTask[]>([]);
-  const [notes, setNotes] = useState<PlannerTaskNote[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
   const [currentUser, setCurrentUser] = useState<string>('');
 
-  // Date range state
-  const [rangeStart, setRangeStart] = useState(addDays(new Date(), -30));
-  const [rangeEnd, setRangeEnd] = useState(addDays(new Date(), 180));
+  // Viewport controls: show 6 weeks at a time
+  const VIEWPORT_WEEKS = 6;
+  const [viewportStart, setViewportStart] = useState(startOfWeek(new Date()));
 
   // Modal states
   const [showProjectModal, setShowProjectModal] = useState(false);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [showTaskModal, setShowTaskModal] = useState(false);
-  const [showTaskDetail, setShowTaskDetail] = useState(false);
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
 
   // Form states
   const [projectForm, setProjectForm] = useState({ name: '', description: '' });
@@ -82,7 +69,6 @@ export default function PlannerPage() {
     if (selectedProjectId) {
       fetchCategories();
       fetchTasks();
-      fetchNotes();
     }
   }, [selectedProjectId]);
 
@@ -150,24 +136,6 @@ export default function PlannerPage() {
     }
 
     setTasks(data || []);
-  };
-
-  const fetchNotes = async () => {
-    const taskIds = tasks.map(t => t.id);
-    if (taskIds.length === 0) return;
-
-    const { data, error } = await supabase
-      .from('planner_task_notes')
-      .select('*')
-      .in('task_id', taskIds)
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      console.error('Error fetching notes:', error);
-      return;
-    }
-
-    setNotes(data || []);
   };
 
   const createProject = async () => {
@@ -263,41 +231,53 @@ export default function PlannerPage() {
     await fetchTasks();
   };
 
-  // Generate week columns
-  const weekStart = startOfWeek(rangeStart);
-  const weekEnd = endOfWeek(rangeEnd);
-  const daysInRange = eachDayOfInterval({ start: weekStart, end: weekEnd });
+  // Generate viewport weeks
+  const viewportEnd = addWeeks(viewportStart, VIEWPORT_WEEKS);
+  const viewportDays = eachDayOfInterval({ start: viewportStart, end: addDays(viewportEnd, -1) });
 
   const weeks = useMemo(() => {
     const weeksList = [];
-    let currentWeekStart = weekStart;
+    let currentStart = startOfWeek(viewportStart);
 
-    while (isBefore(currentWeekStart, weekEnd) || isSameDay(currentWeekStart, weekEnd)) {
-      const currentWeekEnd = endOfWeek(currentWeekStart);
+    for (let i = 0; i < VIEWPORT_WEEKS; i++) {
+      const weekEnd = endOfWeek(currentStart);
       weeksList.push({
-        start: currentWeekStart,
-        end: isBefore(currentWeekEnd, weekEnd) ? currentWeekEnd : weekEnd,
-        days: eachDayOfInterval({
-          start: currentWeekStart,
-          end: isBefore(currentWeekEnd, weekEnd) ? currentWeekEnd : weekEnd
-        })
+        start: currentStart,
+        end: weekEnd,
+        days: eachDayOfInterval({ start: currentStart, end: weekEnd })
       });
-      currentWeekStart = addDays(currentWeekEnd, 1);
+      currentStart = addDays(weekEnd, 1);
     }
 
     return weeksList;
-  }, [weekStart, weekEnd]);
+  }, [viewportStart]);
 
   const getTaskPosition = (task: PlannerTask) => {
     const taskStart = parseISO(task.start_date);
     const taskEnd = parseISO(task.end_date);
     
-    const startIndex = daysInRange.findIndex(d => isSameDay(d, taskStart));
-    const endIndex = daysInRange.findIndex(d => isSameDay(d, taskEnd));
+    const startIndex = viewportDays.findIndex(d => isSameDay(d, taskStart));
+    const endIndex = viewportDays.findIndex(d => isSameDay(d, taskEnd));
+
+    if (startIndex === -1 || endIndex === -1) {
+      // Task is partially or fully outside viewport
+      const beforeViewport = isBefore(taskEnd, viewportStart);
+      const afterViewport = isBefore(viewportEnd, taskStart);
+      
+      if (beforeViewport || afterViewport) return null;
+
+      // Partially visible
+      return {
+        startIndex: Math.max(0, startIndex === -1 ? 0 : startIndex),
+        endIndex: Math.min(viewportDays.length - 1, endIndex === -1 ? viewportDays.length - 1 : endIndex),
+        partial: true
+      };
+    }
 
     return {
       startIndex: Math.max(0, startIndex),
-      endIndex: Math.min(daysInRange.length - 1, endIndex)
+      endIndex: Math.min(viewportDays.length - 1, endIndex),
+      partial: false
     };
   };
 
@@ -320,8 +300,8 @@ export default function PlannerPage() {
   return (
     <div className="space-y-6">
       {/* Header and Controls */}
-      <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
-        <div className="flex items-center justify-between mb-4">
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
           <h1 className="flex items-center text-2xl font-bold text-gray-900">
             <FolderKanban className="mr-2" size={28} />
             Project Planner
@@ -338,7 +318,7 @@ export default function PlannerPage() {
         </div>
 
         {projects.length > 0 && (
-          <div className="mb-4">
+          <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Select Project</label>
             <select
               value={selectedProjectId}
@@ -352,164 +332,205 @@ export default function PlannerPage() {
           </div>
         )}
 
-        {/* Date Range Controls */}
-        <div className="flex items-center gap-4">
+        {/* Date Range Navigation */}
+        <div className="flex items-center justify-between bg-gray-100 rounded-lg p-4">
           <button
-            onClick={() => {
-              setRangeStart(addDays(rangeStart, -7));
-              setRangeEnd(addDays(rangeEnd, -7));
-            }}
-            className="p-2 hover:bg-gray-100 rounded-lg"
+            onClick={() => setViewportStart(addWeeks(viewportStart, -1))}
+            className="p-2 hover:bg-gray-200 rounded-lg"
+            title="Previous week"
           >
             <ChevronLeft size={20} />
           </button>
 
-          <button
-            onClick={() => {
-              setRangeStart(addDays(new Date(), -30));
-              setRangeEnd(addDays(new Date(), 180));
-            }}
-            className="flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
-          >
-            <Calendar size={16} className="mr-2" />
-            Today
-          </button>
+          <div className="flex items-center gap-3 flex-1 justify-center">
+            <button
+              onClick={() => setViewportStart(startOfWeek(new Date()))}
+              className="flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-white rounded-lg hover:bg-gray-50 border border-gray-300"
+            >
+              <Calendar size={16} className="mr-2" />
+              Today
+            </button>
+            <span className="text-sm font-medium text-gray-700">
+              {format(viewportStart, 'MMM d')} - {format(addDays(viewportEnd, -1), 'MMM d, yyyy')}
+            </span>
+          </div>
 
           <button
-            onClick={() => {
-              setRangeStart(addDays(rangeEnd, 1));
-              setRangeEnd(addDays(rangeEnd, 1 + 211));
-            }}
-            className="p-2 hover:bg-gray-100 rounded-lg"
+            onClick={() => setViewportStart(addWeeks(viewportStart, 1))}
+            className="p-2 hover:bg-gray-200 rounded-lg"
+            title="Next week"
           >
             <ChevronRight size={20} />
           </button>
 
-          <span className="text-sm text-gray-600">
-            {format(rangeStart, 'MMM d')} - {format(rangeEnd, 'MMM d, yyyy')}
-          </span>
-
           {isAdmin && (
-            <>
+            <div className="flex gap-2 ml-4">
               <button
                 onClick={() => setShowCategoryModal(true)}
-                className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 ml-auto"
+                disabled={!selectedProjectId}
+                className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
               >
                 <Plus size={16} className="mr-2" />
-                New Category
+                Category
               </button>
               <button
                 onClick={() => setShowTaskModal(true)}
-                className="flex items-center px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+                disabled={categories.length === 0}
+                className="flex items-center px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50"
               >
                 <Plus size={16} className="mr-2" />
-                New Task
+                Task
               </button>
-            </>
+            </div>
           )}
         </div>
       </div>
 
       {/* Gantt Chart */}
       {selectedProjectId && (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-x-auto">
-          <div className="min-w-max">
-            {/* Week Headers */}
-            <div className="flex border-b border-gray-200 sticky top-0 bg-white">
-              <div className="w-64 border-r border-gray-200 bg-gray-50 p-3 font-medium text-sm text-gray-700 flex-shrink-0">
-                Tasks
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+          <div className="overflow-x-hidden">
+            <div className="flex">
+              {/* Task Names Column */}
+              <div className="w-64 flex-shrink-0 border-r border-gray-200">
+                {/* Header */}
+                <div className="sticky top-0 bg-gray-50 border-b border-gray-200 p-3 font-medium text-sm text-gray-700 h-16 flex items-center z-10">
+                  Tasks
+                </div>
+
+                {/* Tasks */}
+                <div>
+                  {groupedTasks.map((group, groupIdx) => (
+                    <div key={groupIdx}>
+                      {/* Category Header */}
+                      <div className="bg-gray-100 border-b border-gray-200 p-3 font-semibold text-sm text-gray-800">
+                        {group.category.name}
+                      </div>
+
+                      {/* Tasks in Category */}
+                      {group.tasks.map((task, taskIdx) => {
+                        const isOverdue = isTaskOverdue(task);
+                        const isCompleted = task.completed_date !== null;
+
+                        return (
+                          <div
+                            key={taskIdx}
+                            className="border-b border-gray-100 p-3 min-h-12 flex items-center gap-2 text-sm hover:bg-gray-50"
+                          >
+                            {isAdmin && (
+                              <input
+                                type="checkbox"
+                                checked={isCompleted}
+                                onChange={(e) => completeTask(task.id, e.target.checked)}
+                                className="w-4 h-4 rounded flex-shrink-0"
+                              />
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <div className={`font-medium truncate ${isCompleted ? 'line-through text-gray-500' : ''}`}>
+                                {task.name}
+                              </div>
+                              {isOverdue && (
+                                <div className="text-xs text-red-600 font-semibold flex items-center gap-1 mt-1">
+                                  <AlertCircle size={12} />
+                                  OVERDUE
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
               </div>
-              <div className="flex flex-1">
-                {weeks.map((week, weekIdx) => (
-                  <div key={weekIdx} className="flex border-r border-gray-200">
-                    {week.days.map((day, dayIdx) => (
+
+              {/* Timeline */}
+              <div className="flex-1 min-w-0">
+                {/* Week/Day Headers */}
+                <div className="sticky top-0 bg-white border-b border-gray-200 z-10">
+                  {/* Week row */}
+                  <div className="flex border-b border-gray-200">
+                    {weeks.map((week, weekIdx) => (
+                      <div
+                        key={weekIdx}
+                        className="flex-1 border-r border-gray-200 py-2 px-2"
+                        style={{ minWidth: `${(week.days.length * 100) / 42}%` }}
+                      >
+                        <div className="text-xs font-semibold text-gray-600 truncate">
+                          {format(week.start, 'MMM d')} - {format(week.end, 'd')}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Day row */}
+                  <div className="flex">
+                    {viewportDays.map((day, dayIdx) => (
                       <div
                         key={dayIdx}
-                        className={`w-24 p-2 text-center border-r border-gray-100 text-xs font-medium ${
-                          isSameDay(day, new Date()) ? 'bg-blue-50' : 'bg-gray-50'
+                        className={`flex-1 border-r border-gray-100 p-1 text-center text-xs font-medium ${
+                          isSameDay(day, new Date()) ? 'bg-blue-50 border-l-2 border-l-blue-600' : 'bg-gray-50'
                         }`}
+                        style={{ minWidth: '60px' }}
                       >
-                        <div>{format(day, 'EEE')}</div>
+                        <div className="font-semibold">{format(day, 'EEE').substring(0, 1)}</div>
                         <div className={isSameDay(day, new Date()) ? 'text-blue-600 font-bold' : ''}>
                           {format(day, 'd')}
                         </div>
                       </div>
                     ))}
                   </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Task Rows */}
-            {groupedTasks.map((group, groupIdx) => (
-              <div key={groupIdx}>
-                {/* Category Header */}
-                <div className="bg-gray-100 border-b border-gray-200 p-3">
-                  <div className="font-semibold text-gray-800 text-sm">{group.category.name}</div>
                 </div>
 
-                {/* Tasks in Category */}
-                {group.tasks.map((task, taskIdx) => {
-                  const position = getTaskPosition(task);
-                  const isOverdue = isTaskOverdue(task);
-                  const isCompleted = task.completed_date !== null;
+                {/* Task Bars */}
+                <div>
+                  {groupedTasks.map((group, groupIdx) => (
+                    <div key={groupIdx}>
+                      {/* Category spacing */}
+                      <div className="bg-gray-100 border-b border-gray-200 h-10"></div>
 
-                  return (
-                    <div key={taskIdx} className="flex border-b border-gray-100 hover:bg-gray-50">
-                      {/* Task Name */}
-                      <div className="w-64 border-r border-gray-200 p-3 flex-shrink-0 flex items-center gap-2">
-                        {isAdmin && (
-                          <input
-                            type="checkbox"
-                            checked={isCompleted}
-                            onChange={(e) => completeTask(task.id, e.target.checked)}
-                            className="w-4 h-4 rounded border-gray-300"
-                          />
-                        )}
-                        <button
-                          onClick={() => {
-                            setSelectedTaskId(task.id);
-                            setShowTaskDetail(true);
-                          }}
-                          className="text-left flex-1 text-sm font-medium text-gray-900 hover:text-blue-600 cursor-pointer"
-                        >
-                          {task.name}
-                        </button>
-                        {isOverdue && (
-                          <AlertCircle size={16} className="text-red-500 flex-shrink-0" />
-                        )}
-                      </div>
+                      {/* Tasks */}
+                      {group.tasks.map((task, taskIdx) => {
+                        const position = getTaskPosition(task);
+                        const isOverdue = isTaskOverdue(task);
+                        const isCompleted = task.completed_date !== null;
 
-                      {/* Timeline */}
-                      <div className="flex flex-1 relative">
-                        {daysInRange.map((day, dayIdx) => (
-                          <div
-                            key={dayIdx}
-                            className="w-24 border-r border-gray-100 p-1 relative"
-                          >
-                            {dayIdx >= position.startIndex && dayIdx <= position.endIndex && (
-                              <div
-                                className={`px-2 py-1 rounded text-xs font-medium text-white text-center ${
-                                  isCompleted
-                                    ? 'bg-green-500'
-                                    : isOverdue
-                                    ? 'bg-red-500'
-                                    : 'bg-blue-500'
-                                }`}
-                              >
-                                {dayIdx === position.startIndex && (
-                                  <span>{task.name.substring(0, 3)}</span>
-                                )}
-                              </div>
-                            )}
+                        return (
+                          <div key={taskIdx} className="flex border-b border-gray-100 min-h-12 items-center">
+                            {viewportDays.map((day, dayIdx) => {
+                              const isInRange = position && dayIdx >= position.startIndex && dayIdx <= position.endIndex;
+                              const isStart = position && dayIdx === position.startIndex;
+
+                              return (
+                                <div
+                                  key={dayIdx}
+                                  className={`flex-1 border-r border-gray-100 p-1`}
+                                  style={{ minWidth: '60px' }}
+                                >
+                                  {isInRange && (
+                                    <div
+                                      className={`h-8 rounded px-2 text-xs font-medium text-white flex items-center justify-center truncate ${
+                                        isCompleted
+                                          ? 'bg-green-500'
+                                          : isOverdue
+                                          ? 'bg-red-500'
+                                          : 'bg-blue-500'
+                                      }`}
+                                    >
+                                      {isStart && task.name.substring(0, 6)}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
-                        ))}
-                      </div>
+                        );
+                      })}
                     </div>
-                  );
-                })}
+                  ))}
+                </div>
               </div>
-            ))}
+            </div>
           </div>
         </div>
       )}
