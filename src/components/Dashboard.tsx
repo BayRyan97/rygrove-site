@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Calendar, DollarSign, LogOut, Eye, Shield, Menu, X, ChevronDown, FileSpreadsheet, User, Calculator } from 'lucide-react';
+import { Calendar, DollarSign, LogOut, Eye, Shield, Menu, X, ChevronDown, FileSpreadsheet, User, Calculator, FolderKanban } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 import { TimeEntriesPage } from './TimeEntriesPage';
@@ -8,6 +8,7 @@ import { AdminPage } from './AdminPage';
 import { CreateInvoicePage } from './CreateInvoicePage';
 import { ExpensePage } from './ExpensePage';
 import { EstimateWorksheetPage } from './EstimateWorksheetPage';
+import PlannerPage from './PlannerPage';
 
 interface DashboardProps {
   user: SupabaseUser;
@@ -46,6 +47,12 @@ export function Dashboard({ user }: DashboardProps) {
       id: 'view-activity',
       label: 'Activity Dashboard',
       icon: Eye,
+      show: true
+    },
+    {
+      id: 'planner',
+      label: 'Project Planner',
+      icon: FolderKanban,
       show: true
     },
     {
@@ -250,6 +257,8 @@ export function Dashboard({ user }: DashboardProps) {
               <TimeEntriesPage />
             ) : activeTab === 'view-activity' ? (
               <ViewActivityPage />
+            ) : activeTab === 'planner' ? (
+              <PlannerPage />
             ) : activeTab === 'estimate-worksheet' ? (
               <EstimateWorksheetPage />
             ) : activeTab === 'create-invoice' ? (
