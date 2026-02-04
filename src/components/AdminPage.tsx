@@ -210,6 +210,40 @@ function AdminPage() {
     }
   };
 
+  const fetchTimeEntriesWithFilters = async (
+    person: string,
+    location: string,
+    start: string,
+    end: string
+  ) => {
+    try {
+      let query = supabase
+        .from('time_entries')
+        .select('*')
+        .gte('date', start)
+        .lte('date', end)
+        .order('date', { ascending: false })
+        .order('full_name')
+        .order('start_time');
+
+      if (person) {
+        query = query.eq('full_name', person);
+      }
+
+      if (location) {
+        query = query.eq('location', location);
+      }
+
+      const { data, error } = await query;
+
+      if (error) throw error;
+      setTimeEntries(data || []);
+    } catch (error) {
+      console.error('Error fetching time entries:', error);
+      alert('Failed to fetch time entries');
+    }
+  };
+
   const createUser = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsCreatingUser(true);
@@ -644,8 +678,9 @@ function AdminPage() {
                 <select
                   value={personFilter}
                   onChange={(e) => {
-                    setPersonFilter(e.target.value);
-                    fetchTimeEntries();
+                    const newFilter = e.target.value;
+                    setPersonFilter(newFilter);
+                    fetchTimeEntriesWithFilters(newFilter, locationFilter, startDate, endDate);
                   }}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
@@ -660,8 +695,9 @@ function AdminPage() {
                 <select
                   value={locationFilter}
                   onChange={(e) => {
-                    setLocationFilter(e.target.value);
-                    fetchTimeEntries();
+                    const newFilter = e.target.value;
+                    setLocationFilter(newFilter);
+                    fetchTimeEntriesWithFilters(personFilter, newFilter, startDate, endDate);
                   }}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
