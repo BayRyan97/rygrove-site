@@ -9,17 +9,40 @@ interface ResponseBody {
   message: string;
 }
 
-export const handler = async (req: Request): Promise<Response> => {
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+};
+
+Deno.serve(async (req) => {
+  // Handle CORS preflight requests
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
+
   // Only allow POST
   if (req.method !== 'POST') {
-    return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405 });
+    return new Response(
+      JSON.stringify({ error: 'Method not allowed' }), 
+      { 
+        status: 405,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      }
+    );
   }
 
   try {
     const { userId } = (await req.json()) as RequestBody;
 
     if (!userId) {
-      return new Response(JSON.stringify({ error: 'userId is required' }), { status: 400 });
+      return new Response(
+        JSON.stringify({ error: 'userId is required' }), 
+        { 
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      );
     }
 
     // Create admin client with service role
@@ -29,7 +52,10 @@ export const handler = async (req: Request): Promise<Response> => {
     if (!supabaseUrl || !serviceRoleKey) {
       return new Response(
         JSON.stringify({ error: 'Missing environment variables' }),
-        { status: 500 }
+        { 
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
       );
     }
 
@@ -47,7 +73,10 @@ export const handler = async (req: Request): Promise<Response> => {
       console.error('Error updating password:', error);
       return new Response(
         JSON.stringify({ error: `Failed to reset password: ${error.message}` }),
-        { status: 400 }
+        { 
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
       );
     }
 
@@ -57,7 +86,7 @@ export const handler = async (req: Request): Promise<Response> => {
         message: 'Password reset successfully'
       } as ResponseBody),
       {
-        headers: { 'Content-Type': 'application/json' },
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200
       }
     );
@@ -65,7 +94,10 @@ export const handler = async (req: Request): Promise<Response> => {
     console.error('Function error:', error);
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }),
-      { status: 500 }
+      { 
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      }
     );
   }
-};
+});
