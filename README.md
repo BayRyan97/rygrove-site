@@ -80,6 +80,24 @@ A comprehensive full-stack web application for managing employee time entries, e
 - **Drag & Drop**: Native HTML5 Drag and Drop API
 - **Linting**: ESLint with TypeScript support
 
+## ⚡ Quick Start
+
+```bash
+# 1. Clone and install
+git clone https://github.com/rygrove/rygrove-site.git
+cd rygrove-site
+npm install
+
+# 2. Set environment variables
+echo "VITE_SUPABASE_URL=your_url" > .env
+echo "VITE_SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY_HERE
+
+# 3. Start development server
+npm run dev
+
+# 4. Open http://localhost:5173
+```
+
 ## 📋 Prerequisites
 
 - Node.js 18+ and npm
