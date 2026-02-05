@@ -173,7 +173,7 @@ function AdminPage() {
       // Fetch profiles with RLS policies handling the access control
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, full_name, role, email')
+        .select('id, full_name, role, email, rate') // Added 'rate' field
         .order('full_name');
 
       if (error) throw error;
@@ -923,6 +923,13 @@ function AdminPage() {
                         onBlur={() => handleRateInputBlur(user.id)}
                         className="w-20 px-2 py-1 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                       />
+                      <button
+                        onClick={() => handleRateInputBlur(user.id)}
+                        className="ml-2 p-1 text-blue-600 hover:text-blue-800"
+                        title="Save Rate"
+                      >
+                        <Save className="h-4 w-4" />
+                      </button>
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm space-x-2">
