@@ -38,33 +38,9 @@ export function Dashboard({ user }: DashboardProps) {
 
   const menuItems: MenuItem[] = [
     {
-      id: 'enter-activity',
-      label: 'Time Management',
-      icon: Calendar,
-      show: true
-    },
-    {
       id: 'view-activity',
       label: 'Activity Dashboard',
       icon: Eye,
-      show: true
-    },
-    {
-      id: 'planner',
-      label: 'Project Planner',
-      icon: FolderKanban,
-      show: true
-    },
-    {
-      id: 'estimate-worksheet',
-      label: 'Estimate Worksheet',
-      icon: Calculator,
-      show: true
-    },
-    {
-      id: 'create-invoice',
-      label: 'Create Invoice',
-      icon: FileSpreadsheet,
       show: true
     },
     {
@@ -74,9 +50,33 @@ export function Dashboard({ user }: DashboardProps) {
       show: isAdmin
     },
     {
+      id: 'create-invoice',
+      label: 'Create Invoice',
+      icon: FileSpreadsheet,
+      show: true
+    },
+    {
+      id: 'estimate-worksheet',
+      label: 'Estimate Worksheet',
+      icon: Calculator,
+      show: true
+    },
+    {
       id: 'expenses',
       label: 'Expense Management',
       icon: DollarSign,
+      show: true
+    },
+    {
+      id: 'planner',
+      label: 'Project Planner',
+      icon: FolderKanban,
+      show: true
+    },
+    {
+      id: 'enter-activity',
+      label: 'Time Management',
+      icon: Calendar,
       show: true
     }
   ];
