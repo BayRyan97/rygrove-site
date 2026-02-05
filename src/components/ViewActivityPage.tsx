@@ -38,6 +38,7 @@ interface TimeEntry {
   is_full_day: boolean;
   work_type?: string[] | null;
   work_type_other?: string | null;
+  rate?: number | null;
   expenses: {
     amount: number;
     description: string;
@@ -383,6 +384,14 @@ export function ViewActivityPage() {
     }
   }, [entries]);
 
+  const totalLaborCost = useMemo(() => {
+    return entries.reduce((total, entry) => {
+      const hours = calculateDuration(entry.start_time, entry.end_time, entry.lunch_break);
+      const rate = entry.rate || 0;
+      return total + (hours * rate);
+    }, 0);
+  }, [entries]);
+
   const groupedEntries = useMemo(() => {
     const groups = new Map<string, {
       locations: Map<string, {
@@ -393,6 +402,7 @@ export function ViewActivityPage() {
       }>;
       totalHours: number;
       totalExpenses: number;
+      totalLaborCost: number;
       dateRange: string;
     }>();
 
@@ -402,6 +412,7 @@ export function ViewActivityPage() {
           locations: new Map(),
           totalHours: 0,
           totalExpenses: 0,
+          totalLaborCost: 0,
           dateRange: ''
         });
       }
@@ -427,6 +438,9 @@ export function ViewActivityPage() {
       const expenses = entry.expenses?.reduce((sum, exp) => sum + exp.amount, 0) || 0;
       locationGroup.totalExpenses += expenses;
       personGroup.totalExpenses += expenses;
+
+      const rate = entry.rate || 0;
+      personGroup.totalLaborCost += hours * rate;
     });
 
     groups.forEach((personGroup, personName) => {
@@ -605,7 +619,8 @@ export function ViewActivityPage() {
           is_full_day,
           work_type,
           work_type_other,
-          expenses (amount, description, receipt_url)
+          expenses (amount, description, receipt_url),
+          profiles!inner(rate)
         `)
         .gte('date', startDate)
         .lte('date', endDate)
@@ -621,7 +636,13 @@ export function ViewActivityPage() {
       const { data, error } = await query;
       if (error) throw error;
 
-      setEntries(data || []);
+      // Flatten the profiles.rate into the entry
+      const entriesWithRate = (data || []).map((entry: any) => ({
+        ...entry,
+        rate: entry.profiles?.rate || 0
+      }));
+
+      setEntries(entriesWithRate);
     } catch (error) {
       console.error('Error fetching entries:', error);
       alert('Failed to fetch entries.');
@@ -723,6 +744,7 @@ export function ViewActivityPage() {
         'End Time',
         'Lunch Break',
         'Hours',
+        'Hourly Rate',
         'Full Day',
         'Work Type',
         'Work Type Other',
@@ -747,6 +769,7 @@ export function ViewActivityPage() {
               entry.is_full_day ? '17:00' : entry.end_time,
               entry.lunch_break
             ).toString(),
+            (entry.rate || 0).toString(),
             entry.is_full_day ? 'Yes' : 'No',
             entry.work_type?.join('; ') || '',
             entry.work_type_other || '',
@@ -971,11 +994,17 @@ export function ViewActivityPage() {
 
       {entries.length > 0 && (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="bg-white rounded-lg shadow-sm p-4 border border-gray-200 flex flex-col items-center justify-center text-center">
               <h3 className="text-sm font-medium text-gray-500 mb-1">Total Hours</h3>
               <p className="text-2xl font-semibold text-gray-900">
                 {summary.totalHours.toFixed(1)}
+              </p>
+            </div>
+            <div className="bg-white rounded-lg shadow-sm p-4 border border-gray-200 flex flex-col items-center justify-center text-center">
+              <h3 className="text-sm font-medium text-gray-500 mb-1">Total Labor Cost</h3>
+              <p className="text-2xl font-semibold text-gray-900">
+                {formatCurrency(totalLaborCost)}
               </p>
             </div>
             <div className="bg-white rounded-lg shadow-sm p-4 border border-gray-200 flex flex-col items-center justify-center text-center">
@@ -1068,6 +1097,10 @@ export function ViewActivityPage() {
                         <div>
                           <p className="text-xs text-gray-500">Hours</p>
                           <p className="text-lg font-semibold text-gray-900">{personGroup.totalHours.toFixed(1)}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-500">Labor Cost</p>
+                          <p className="text-lg font-semibold text-gray-900">{formatCurrency(personGroup.totalLaborCost)}</p>
                         </div>
                         <div>
                           <p className="text-xs text-gray-500">Expenses</p>

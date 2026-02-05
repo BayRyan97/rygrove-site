@@ -16,6 +16,7 @@ interface TimeEntry {
   is_full_day: boolean;
   work_type?: string[] | null;
   work_type_other?: string | null;
+  rate?: number | null;
 }
 
 interface UserProfile {
@@ -23,6 +24,7 @@ interface UserProfile {
   full_name: string;
   role: string;
   email?: string | null;
+  rate?: number | null;
 }
 
 interface CreateUserForm {
@@ -76,6 +78,7 @@ function AdminPage() {
   const [isCreatingUser, setIsCreatingUser] = useState(false);
   const [resetPasswordUserId, setResetPasswordUserId] = useState<string | null>(null);
   const [isResettingPassword, setIsResettingPassword] = useState(false);
+  const [rateEditValues, setRateEditValues] = useState<{ [key: string]: string }>({});
 
   useEffect(() => {
     checkAdminStatus();
@@ -185,7 +188,10 @@ function AdminPage() {
     try {
       let query = supabase
         .from('time_entries')
-        .select('*')
+        .select(`
+          *,
+          profiles!inner(rate)
+        `)
         .gte('date', startDate)
         .lte('date', endDate)
         .order('date', { ascending: false })
@@ -203,7 +209,14 @@ function AdminPage() {
       const { data, error } = await query;
 
       if (error) throw error;
-      setTimeEntries(data || []);
+      
+      // Flatten the profiles.rate into the entry
+      const entriesWithRate = (data || []).map((entry: any) => ({
+        ...entry,
+        rate: entry.profiles?.rate || 0
+      }));
+      
+      setTimeEntries(entriesWithRate);
     } catch (error) {
       console.error('Error fetching time entries:', error);
       alert('Failed to fetch time entries');
@@ -219,7 +232,10 @@ function AdminPage() {
     try {
       let query = supabase
         .from('time_entries')
-        .select('*')
+        .select(`
+          *,
+          profiles!inner(rate)
+        `)
         .gte('date', start)
         .lte('date', end)
         .order('date', { ascending: false })
@@ -237,7 +253,14 @@ function AdminPage() {
       const { data, error } = await query;
 
       if (error) throw error;
-      setTimeEntries(data || []);
+      
+      // Flatten the profiles.rate into the entry
+      const entriesWithRate = (data || []).map((entry: any) => ({
+        ...entry,
+        rate: entry.profiles?.rate || 0
+      }));
+      
+      setTimeEntries(entriesWithRate);
     } catch (error) {
       console.error('Error fetching time entries:', error);
       alert('Failed to fetch time entries');
@@ -357,6 +380,7 @@ function AdminPage() {
       'End Time',
       'Lunch Break',
       'Hours',
+      'Hourly Rate',
       'Full Day',
       'Work Type',
       'Work Type Other',
@@ -374,6 +398,7 @@ function AdminPage() {
       entry.is_full_day ? '17:00' : entry.end_time,
       entry.lunch_break || '',
       calculateTotalHours(entry),
+      entry.rate || 0,
       entry.is_full_day ? 'Yes' : 'No',
       entry.work_type?.join('; ') || '',
       entry.work_type_other || '',
@@ -421,6 +446,47 @@ function AdminPage() {
       alert('Failed to update user role');
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const updateUserRate = async (userId: string, newRate: number) => {
+    try {
+      setIsSaving(true);
+      const { error } = await supabase
+        .from('profiles')
+        .update({ rate: newRate })
+        .eq('id', userId);
+
+      if (error) throw error;
+
+      setUsers(users.map(user => 
+        user.id === userId ? { ...user, rate: newRate } : user
+      ));
+    } catch (error) {
+      console.error('Error updating user rate:', error);
+      alert('Failed to update user rate');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleRateInputChange = (userId: string, value: string) => {
+    setRateEditValues(prev => ({
+      ...prev,
+      [userId]: value
+    }));
+  };
+
+  const handleRateInputBlur = (userId: string) => {
+    const value = rateEditValues[userId];
+    if (value !== undefined) {
+      const numValue = parseFloat(value) || 0;
+      updateUserRate(userId, numValue);
+      setRateEditValues(prev => {
+        const newValues = { ...prev };
+        delete newValues[userId];
+        return newValues;
+      });
     }
   };
 
@@ -826,6 +892,9 @@ function AdminPage() {
                   Role
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Hourly Rate
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Actions
                 </th>
               </tr>
@@ -841,6 +910,20 @@ function AdminPage() {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm text-gray-500">{user.role}</div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="flex items-center">
+                      <span className="text-sm text-gray-500 mr-1">$</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={rateEditValues[user.id] !== undefined ? rateEditValues[user.id] : (user.rate || 0)}
+                        onChange={(e) => handleRateInputChange(user.id, e.target.value)}
+                        onBlur={() => handleRateInputBlur(user.id)}
+                        className="w-20 px-2 py-1 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                      />
+                    </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm space-x-2">
                     <select

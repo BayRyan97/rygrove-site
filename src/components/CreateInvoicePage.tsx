@@ -14,6 +14,7 @@ interface TimeEntry {
   user_id: string;
   full_name: string;
   is_full_day: boolean;
+  rate?: number | null;
   expenses: {
     amount: number;
     description: string;
@@ -120,6 +121,7 @@ export function CreateInvoicePage() {
           user_id,
           full_name,
           is_full_day,
+          profiles!inner(rate),
           expenses (
             amount,
             description,
@@ -134,10 +136,11 @@ export function CreateInvoicePage() {
 
       if (error) throw error;
 
-      // Transform the data to include retailer name
-      const transformedData = data?.map(entry => ({
+      // Transform the data to include retailer name and rate
+      const transformedData = data?.map((entry: any) => ({
         ...entry,
-        expenses: entry.expenses.map(expense => ({
+        rate: entry.profiles?.rate || 0,
+        expenses: entry.expenses.map((expense: any) => ({
           ...expense,
           retailer_name: expense.retailer?.name
         }))
@@ -165,7 +168,7 @@ export function CreateInvoicePage() {
       if (expensesError) throw expensesError;
 
       // Transform standalone expenses data
-      const transformedExpenses = expensesData?.map(expense => ({
+      const transformedExpenses = expensesData?.map((expense: any) => ({
         ...expense,
         retailer_name: expense.retailer?.name
       })) || [];
@@ -230,6 +233,7 @@ export function CreateInvoicePage() {
       'End Time',
       'Lunch Break',
       'Hours',
+      'Hourly Rate',
       'Notes',
       'Expense Amount',
       'Expense Description',
@@ -265,6 +269,7 @@ export function CreateInvoicePage() {
         entry.is_full_day ? '17:00' : entry.end_time,
         entry.lunch_break || '',
         locationSummary.employeeHours[entry.full_name].toFixed(2),
+        (entry.rate || 0).toString(),
         entry.notes || ''
       ];
 
