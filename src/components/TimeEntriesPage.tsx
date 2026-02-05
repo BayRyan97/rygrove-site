@@ -239,9 +239,9 @@ export function TimeEntriesPage() {
         alert('Please select at least one Work Type for every time entry.');
         return;
       }
-      if (entry.work_type.includes('Other') && (!entry.work_type_other || entry.work_type_other.trim() === '')) {
-        alert('Please provide a description for "Other" work type.');
-        return;
+      if (entry.work_type.includes('Other')) {
+        // Default to 'Other' if the free text box is empty
+        entry.work_type_other = entry.work_type_other?.trim() || 'Other';
       }
     }
 
