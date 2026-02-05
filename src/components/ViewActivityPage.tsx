@@ -179,6 +179,23 @@ export function ViewActivityPage() {
         title: {
           display: true,
           text: 'Date'
+        },
+        ticks: {
+          callback: function(value: any, index: number, ticks: any[]) {
+            const labels = this.getLabelForValue ? this.getLabelForValue(value) : chartData?.labels?.[index];
+            if (labels && typeof labels === 'string') {
+              try {
+                const formattedDate = format(parseISO(labels), 'MM/dd/yyyy');
+                const dayOfWeek = format(parseISO(labels), 'EEE');
+                return [formattedDate, dayOfWeek];
+              } catch (e) {
+                return labels;
+              }
+            }
+            return labels;
+          },
+          maxRotation: 0,
+          autoSkip: true
         }
       },
       y: {
