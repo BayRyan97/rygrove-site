@@ -624,6 +624,20 @@ export function ViewActivityPage() {
 
     setIsLoading(true);
     try {
+      // Fetch current user role to ensure we have the latest value
+      const { data: { user } } = await supabase.auth.getUser();
+      let userRole = 'employee';
+      
+      if (user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', user.id)
+          .single();
+        
+        userRole = profile?.role || 'employee';
+      }
+
       let query = supabase
         .from('time_entries')
         .select(`
@@ -655,8 +669,8 @@ export function ViewActivityPage() {
       }
 
       // Filter by user_id for regular employees (not admins or supervisors)
-      if (!isAdmin && !isSupervisor && currentUserId) {
-        query = query.eq('user_id', currentUserId);
+      if (userRole !== 'admin' && userRole !== 'supervisor' && user) {
+        query = query.eq('user_id', user.id);
       }
 
       const { data, error } = await query;
