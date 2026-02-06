@@ -948,6 +948,7 @@ function AdminPage() {
                       className="px-3 py-1 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
                       <option value="employee">Employee</option>
+                      <option value="supervisor">Supervisor</option>
                       <option value="admin">Admin</option>
                     </select>
                     {user.email && (
