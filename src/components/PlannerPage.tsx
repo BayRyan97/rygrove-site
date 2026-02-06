@@ -42,6 +42,16 @@ interface PlannerNote {
   updated_at: string;
 }
 
+interface NoteComment {
+  id: string;
+  note_id: string;
+  comment_text: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  author_name?: string;
+}
+
 // Category color palette
 const CATEGORY_COLORS = [
   { bg: 'from-purple-400 to-purple-600', light: 'from-purple-50 to-purple-100', hover: 'hover:from-purple-500 hover:to-purple-700', border: 'border-purple-400' },
@@ -60,6 +70,7 @@ export default function PlannerPage() {
   const [categories, setCategories] = useState<PlannerCategory[]>([]);
   const [tasks, setTasks] = useState<PlannerTask[]>([]);
   const [notes, setNotes] = useState<PlannerNote[]>([]);
+  const [noteComments, setNoteComments] = useState<NoteComment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
   const [currentUser, setCurrentUser] = useState<string>('');
@@ -98,8 +109,11 @@ export default function PlannerPage() {
   const [hoveredTaskId, setHoveredTaskId] = useState<string | null>(null);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
   const [showNoteModal, setShowNoteModal] = useState(false);
+  const [showNoteDetailModal, setShowNoteDetailModal] = useState(false);
+  const [selectedNote, setSelectedNote] = useState<PlannerNote | null>(null);
   const [showPromoteNoteModal, setShowPromoteNoteModal] = useState(false);
   const [promotingNote, setPromotingNote] = useState<PlannerNote | null>(null);
+  const [commentText, setCommentText] = useState('');
 
   // Category collapse states
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
@@ -448,6 +462,82 @@ export default function PlannerPage() {
     }
 
     await fetchNotes();
+    if (selectedNote && selectedNote.id === noteId) {
+      setShowNoteDetailModal(false);
+      setSelectedNote(null);
+    }
+  };
+
+  const updateNote = async () => {
+    if (!selectedNote) return;
+
+    const { error } = await supabase
+      .from('planner_notes')
+      .update({
+        title: selectedNote.title,
+        description: selectedNote.description,
+        category_id: selectedNote.category_id || null,
+        updated_by: currentUser,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', selectedNote.id);
+
+    if (error) {
+      console.error('Error updating note:', error);
+      alert(`Failed to update note: ${error.message}`);
+      return;
+    }
+
+    await fetchNotes();
+  };
+
+  const fetchNoteComments = async (noteId: string) => {
+    const { data, error } = await supabase
+      .from('planner_note_comments')
+      .select(`
+        *,
+        profiles!inner(full_name)
+      `)
+      .eq('note_id', noteId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching note comments:', error);
+      return;
+    }
+
+    const commentsWithAuthor = (data || []).map((comment: any) => ({
+      ...comment,
+      author_name: comment.profiles?.full_name || 'Unknown'
+    }));
+
+    setNoteComments(commentsWithAuthor);
+  };
+
+  const addComment = async () => {
+    if (!selectedNote || !commentText.trim()) return;
+
+    const { error } = await supabase
+      .from('planner_note_comments')
+      .insert([{
+        note_id: selectedNote.id,
+        comment_text: commentText,
+        created_by: currentUser
+      }]);
+
+    if (error) {
+      console.error('Error adding comment:', error);
+      return;
+    }
+
+    setCommentText('');
+    await fetchNoteComments(selectedNote.id);
+  };
+
+  const openNoteDetail = (note: PlannerNote) => {
+    setSelectedNote(note);
+    setShowNoteDetailModal(true);
+    fetchNoteComments(note.id);
   };
 
   const promoteNoteToTask = async () => {
@@ -1032,19 +1122,23 @@ export default function PlannerPage() {
               const categoryColor = note.category_id ? getCategoryColor(note.category_id) : null;
               const bgColor = categoryColor 
                 ? categoryColor.light.replace('from-', 'bg-').replace(' to-', '').split(' ')[0]
-                : 'bg-yellow-100';
-              const borderColor = categoryColor ? categoryColor.border : 'border-yellow-300';
+                : 'bg-gray-100';
+              const borderColor = categoryColor ? categoryColor.border : 'border-gray-300';
               const rotation = idx % 3 === 0 ? '-rotate-1' : idx % 3 === 1 ? 'rotate-1' : 'rotate-0';
 
               return (
                 <div
                   key={note.id}
-                  className={`${bgColor} ${borderColor} border-2 rounded-lg p-4 shadow-lg hover:shadow-2xl transition-all duration-200 ${rotation} relative group`}
+                  onClick={() => openNoteDetail(note)}
+                  className={`${bgColor} ${borderColor} border-2 rounded-lg p-4 shadow-lg hover:shadow-2xl transition-all duration-200 ${rotation} relative group cursor-pointer`}
                   style={{ minHeight: '180px' }}
                 >
                   {/* Delete button */}
                   <button
-                    onClick={() => deleteNote(note.id)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deleteNote(note.id);
+                    }}
                     className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 p-1 hover:bg-red-100 rounded text-red-600 transition-opacity"
                     title="Delete note"
                   >
@@ -1068,23 +1162,9 @@ export default function PlannerPage() {
 
                   {/* Description */}
                   {note.description && (
-                    <p className="text-sm text-gray-700 mb-3 whitespace-pre-wrap">
+                    <p className="text-sm text-gray-700 mb-3 whitespace-pre-wrap line-clamp-3">
                       {note.description}
                     </p>
-                  )}
-
-                  {/* Promote to Task button */}
-                  {note.category_id && (
-                    <button
-                      onClick={() => {
-                        setPromotingNote(note);
-                        setShowPromoteNoteModal(true);
-                      }}
-                      className="absolute bottom-3 right-3 flex items-center gap-1 px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-xs shadow-md"
-                    >
-                      <CalendarIcon size={12} />
-                      Add to Gantt
-                    </button>
                   )}
                 </div>
               );
@@ -1488,6 +1568,158 @@ export default function PlannerPage() {
               >
                 Cancel
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Note Detail Modal */}
+      {showNoteDetailModal && selectedNote && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-[600px] max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold">Note Details</h2>
+              <button
+                onClick={() => {
+                  setShowNoteDetailModal(false);
+                  setSelectedNote(null);
+                  setNoteComments([]);
+                }}
+                className="p-1 hover:bg-gray-100 rounded"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
+                <input
+                  type="text"
+                  value={selectedNote.title}
+                  onChange={(e) => setSelectedNote({ ...selectedNote, title: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                <textarea
+                  value={selectedNote.description || ''}
+                  onChange={(e) => setSelectedNote({ ...selectedNote, description: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  rows={4}
+                  placeholder="Add note description..."
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+                <select
+                  value={selectedNote.category_id || ''}
+                  onChange={(e) => setSelectedNote({ ...selectedNote, category_id: e.target.value || null })}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">No category (just a note)</option>
+                  {categories.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Comments Section */}
+              <div className="border-t pt-4">
+                <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                  <StickyNote size={20} />
+                  Comments ({noteComments.length})
+                </h3>
+                
+                {/* Comments List */}
+                <div className="space-y-3 mb-4 max-h-60 overflow-y-auto">
+                  {noteComments.length === 0 ? (
+                    <p className="text-sm text-gray-500 italic">No comments yet. Be the first to add one!</p>
+                  ) : (
+                    noteComments.map((comment) => (
+                      <div key={comment.id} className="bg-gray-50 rounded-lg p-3">
+                        <div className="flex items-start justify-between mb-1">
+                          <span className="text-sm font-medium text-gray-900">{comment.author_name}</span>
+                          <span className="text-xs text-gray-500">
+                            {format(parseISO(comment.created_at), 'MMM d, yyyy h:mm a')}
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-700 whitespace-pre-wrap">{comment.comment_text}</p>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                {/* Add Comment */}
+                <div className="space-y-2">
+                  <textarea
+                    value={commentText}
+                    onChange={(e) => setCommentText(e.target.value)}
+                    placeholder="Add a comment..."
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
+                    rows={3}
+                  />
+                  <button
+                    onClick={addComment}
+                    disabled={!commentText.trim()}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                  >
+                    Add Comment
+                  </button>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-2 pt-4 border-t">
+                <button
+                  onClick={() => {
+                    updateNote();
+                    setShowNoteDetailModal(false);
+                    setSelectedNote(null);
+                    setNoteComments([]);
+                  }}
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                >
+                  Save Changes
+                </button>
+                
+                {selectedNote.category_id && (
+                  <button
+                    onClick={() => {
+                      setPromotingNote(selectedNote);
+                      setShowPromoteNoteModal(true);
+                      setShowNoteDetailModal(false);
+                    }}
+                    className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                  >
+                    <CalendarIcon size={16} />
+                    Add to Gantt
+                  </button>
+                )}
+
+                <button
+                  onClick={() => {
+                    deleteNote(selectedNote.id);
+                  }}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+                >
+                  Delete
+                </button>
+                
+                <button
+                  onClick={() => {
+                    setShowNoteDetailModal(false);
+                    setSelectedNote(null);
+                    setNoteComments([]);
+                  }}
+                  className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300"
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           </div>
         </div>
