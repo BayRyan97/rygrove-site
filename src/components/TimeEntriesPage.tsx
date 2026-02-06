@@ -381,7 +381,7 @@ export function TimeEntriesPage() {
   };
 
   const handleEmployeeSelect = (employeeId: string, employeeName: string, entryIndex: number) => {
-    if (!isSupervisor) return; // Only allow Supervisors to select employees
+    if (!isAdmin && !isSupervisor) return; // Only allow Admins and Supervisors to select employees
 
     const newEntries = [...entries];
     newEntries[entryIndex].user_id = employeeId;
@@ -522,6 +522,7 @@ export function TimeEntriesPage() {
                           const newEntries = [...entries];
                           newEntries[entryIndex].full_name = e.target.value;
                           setEntries(newEntries);
+                          setActiveEmployeeDropdownIndex(entryIndex);
                         }}
                         onClick={() => {
                           setActiveEmployeeDropdownIndex(entryIndex);
@@ -538,7 +539,7 @@ export function TimeEntriesPage() {
                             e.preventDefault();
                             setEmployeeHighlight(prev => ({ ...prev, [entryIndex]: Math.max((prev[entryIndex] ?? 0) - 1, 0) }));
                           } else if (e.key === 'Enter') {
-                            if (activeEmployeeDropdownIndex === entryIndex && filtered.length > 0) {
+                            if (filtered.length > 0) {
                               e.preventDefault();
                               const idx = employeeHighlight[entryIndex] ?? 0;
                               const chosen = filtered[Math.max(0, Math.min(idx, max))];
