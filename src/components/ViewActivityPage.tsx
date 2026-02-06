@@ -654,8 +654,7 @@ export function ViewActivityPage() {
           is_full_day,
           work_type,
           work_type_other,
-          expenses (amount, description, receipt_url),
-          profiles!inner(rate)
+          expenses (amount, description, receipt_url)
         `)
         .gte('date', startDate)
         .lte('date', endDate)
@@ -676,10 +675,35 @@ export function ViewActivityPage() {
       const { data, error } = await query;
       if (error) throw error;
 
-      // Flatten the profiles.rate into the entry
+      // Fetch rates for all unique user_ids if admin/supervisor
+      const rateMap = new Map<string, number>();
+      if (data && (userRole === 'admin' || userRole === 'supervisor')) {
+        const uniqueUserIds = [...new Set(data.map((entry: any) => entry.user_id))];
+        const { data: profilesData } = await supabase
+          .from('profiles')
+          .select('id, rate')
+          .in('id', uniqueUserIds);
+        
+        profilesData?.forEach(profile => {
+          rateMap.set(profile.id, profile.rate || 0);
+        });
+      } else if (data && user) {
+        // For regular employees, just get their own rate
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('rate')
+          .eq('id', user.id)
+          .single();
+        
+        if (profileData) {
+          rateMap.set(user.id, profileData.rate || 0);
+        }
+      }
+
+      // Add rates to entries
       const entriesWithRate = (data || []).map((entry: any) => ({
         ...entry,
-        rate: entry.profiles?.rate || 0
+        rate: rateMap.get(entry.user_id) || 0
       }));
 
       setEntries(entriesWithRate);
