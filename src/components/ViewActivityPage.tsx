@@ -167,6 +167,7 @@ export function ViewActivityPage() {
   const [chartType, setChartType] = useState<'bar' | 'pie'>('bar');
   const [isAdmin, setIsAdmin] = useState(false);
   const [isSupervisor, setIsSupervisor] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
   const [editValues, setEditValues] = useState<Partial<TimeEntry> | null>(null);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
@@ -557,6 +558,7 @@ export function ViewActivityPage() {
         // Check if user is admin or supervisor
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
+          setCurrentUserId(user.id);
           const { data: profile } = await supabase
             .from('profiles')
             .select('role')
@@ -650,6 +652,11 @@ export function ViewActivityPage() {
       }
       if (personName) {
         query = query.eq('full_name', personName);
+      }
+
+      // Filter by user_id for regular employees (not admins or supervisors)
+      if (!isAdmin && !isSupervisor && currentUserId) {
+        query = query.eq('user_id', currentUserId);
       }
 
       const { data, error } = await query;
@@ -1013,28 +1020,28 @@ export function ViewActivityPage() {
 
       {entries.length > 0 && (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="bg-white rounded-lg shadow-sm p-4 border border-gray-200 flex flex-col items-center justify-center text-center">
+          <div className={`grid grid-cols-1 md:grid-cols-2 ${isSupervisor ? 'lg:grid-cols-3' : 'lg:grid-cols-4'} gap-4 ${isSupervisor ? 'justify-items-center' : ''}`}>
+            <div className="bg-white rounded-lg shadow-sm p-4 border border-gray-200 flex flex-col items-center justify-center text-center w-full">
               <h3 className="text-sm font-medium text-gray-500 mb-1">Total Hours</h3>
               <p className="text-2xl font-semibold text-gray-900">
                 {summary.totalHours.toFixed(1)}
               </p>
             </div>
             {!isSupervisor && (
-              <div className="bg-white rounded-lg shadow-sm p-4 border border-gray-200 flex flex-col items-center justify-center text-center">
+              <div className="bg-white rounded-lg shadow-sm p-4 border border-gray-200 flex flex-col items-center justify-center text-center w-full">
                 <h3 className="text-sm font-medium text-gray-500 mb-1">Total Labor Cost</h3>
                 <p className="text-2xl font-semibold text-gray-900">
                   {formatCurrency(totalLaborCost)}
                 </p>
               </div>
             )}
-            <div className="bg-white rounded-lg shadow-sm p-4 border border-gray-200 flex flex-col items-center justify-center text-center">
+            <div className="bg-white rounded-lg shadow-sm p-4 border border-gray-200 flex flex-col items-center justify-center text-center w-full">
               <h3 className="text-sm font-medium text-gray-500 mb-1">Total Expenses</h3>
               <p className="text-2xl font-semibold text-gray-900">
                 {formatCurrency(summary.totalExpenses)}
               </p>
             </div>
-            <div className="bg-white rounded-lg shadow-sm p-4 border border-gray-200 flex flex-col items-center justify-center text-center">
+            <div className="bg-white rounded-lg shadow-sm p-4 border border-gray-200 flex flex-col items-center justify-center text-center w-full">
               <h3 className="text-sm font-medium text-gray-500 mb-1">Unique Locations</h3>
               <p className="text-2xl font-semibold text-gray-900">
                 {summary.uniqueLocations.size}
