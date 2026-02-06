@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { format, parseISO, differenceInMinutes, eachDayOfInterval, subDays, subMonths, startOfQuarter, subQuarters, subYears } from 'date-fns';
 import { Calendar, Search, User, MapPin, ChevronDown, ChevronRight, X, Download, Trash2 } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { supabase, getUserRole } from '../lib/supabase';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -166,6 +166,7 @@ export function ViewActivityPage() {
   const locationDropdownRef = useRef<HTMLDivElement>(null);
   const [chartType, setChartType] = useState<'bar' | 'pie'>('bar');
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isSupervisor, setIsSupervisor] = useState(false);
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
   const [editValues, setEditValues] = useState<Partial<TimeEntry> | null>(null);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
@@ -553,7 +554,7 @@ export function ViewActivityPage() {
   useEffect(() => {
     async function fetchData() {
       try {
-        // Check if user is admin
+        // Check if user is admin or supervisor
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
           const { data: profile } = await supabase
@@ -563,6 +564,7 @@ export function ViewActivityPage() {
             .single();
 
           setIsAdmin(profile?.role === 'admin');
+          setIsSupervisor(profile?.role === 'supervisor');
         }
 
         // Fetch unique names from time_entries
@@ -1018,12 +1020,14 @@ export function ViewActivityPage() {
                 {summary.totalHours.toFixed(1)}
               </p>
             </div>
-            <div className="bg-white rounded-lg shadow-sm p-4 border border-gray-200 flex flex-col items-center justify-center text-center">
-              <h3 className="text-sm font-medium text-gray-500 mb-1">Total Labor Cost</h3>
-              <p className="text-2xl font-semibold text-gray-900">
-                {formatCurrency(totalLaborCost)}
-              </p>
-            </div>
+            {!isSupervisor && (
+              <div className="bg-white rounded-lg shadow-sm p-4 border border-gray-200 flex flex-col items-center justify-center text-center">
+                <h3 className="text-sm font-medium text-gray-500 mb-1">Total Labor Cost</h3>
+                <p className="text-2xl font-semibold text-gray-900">
+                  {formatCurrency(totalLaborCost)}
+                </p>
+              </div>
+            )}
             <div className="bg-white rounded-lg shadow-sm p-4 border border-gray-200 flex flex-col items-center justify-center text-center">
               <h3 className="text-sm font-medium text-gray-500 mb-1">Total Expenses</h3>
               <p className="text-2xl font-semibold text-gray-900">
@@ -1115,10 +1119,12 @@ export function ViewActivityPage() {
                           <p className="text-xs text-gray-500">Hours</p>
                           <p className="text-lg font-semibold text-gray-900">{personGroup.totalHours.toFixed(1)}</p>
                         </div>
-                        <div>
-                          <p className="text-xs text-gray-500">Labor Cost</p>
-                          <p className="text-lg font-semibold text-gray-900">{formatCurrency(personGroup.totalLaborCost)}</p>
-                        </div>
+                        {!isSupervisor && (
+                          <div>
+                            <p className="text-xs text-gray-500">Labor Cost</p>
+                            <p className="text-lg font-semibold text-gray-900">{formatCurrency(personGroup.totalLaborCost)}</p>
+                          </div>
+                        )}
                         <div>
                           <p className="text-xs text-gray-500">Expenses</p>
                           <p className="text-lg font-semibold text-gray-900">{formatCurrency(personGroup.totalExpenses)}</p>

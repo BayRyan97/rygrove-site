@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Plus, RefreshCw, MapPin, ChevronDown, DollarSign, User, Store, Upload, Trash2, X } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { supabase, getUserRole } from '../lib/supabase';
 import { format, parseISO, differenceInMinutes } from 'date-fns';
 
 interface Profile {
@@ -48,6 +48,7 @@ export function TimeEntriesPage() {
   const [userId, setUserId] = useState<string>('');
   const [currentUserProfile, setCurrentUserProfile] = useState<Profile | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isSupervisor, setIsSupervisor] = useState(false);
   const [locations, setLocations] = useState<string[]>([]);
   const [retailers, setRetailers] = useState<{ id: string; name: string }[]>([]);
   const [employees, setEmployees] = useState<Profile[]>([]);
@@ -100,8 +101,8 @@ export function TimeEntriesPage() {
     has_lunch_break: true,
     lunch_break: '00:30',
     notes: '',
-    user_id: isAdmin ? '' : userId,
-    full_name: isAdmin ? '' : (currentUserProfile?.full_name || ''),
+    user_id: (isAdmin || isSupervisor) ? '' : userId,
+    full_name: (isAdmin || isSupervisor) ? '' : (currentUserProfile?.full_name || ''),
     expenses: [],
     work_type: [],
     work_type_other: null
@@ -179,9 +180,12 @@ export function TimeEntriesPage() {
         
         if (profile) {
           setCurrentUserProfile(profile);
-          setIsAdmin(profile.role === 'admin');
+          const userIsAdmin = profile.role === 'admin';
+          const userIsSupervisor = profile.role === 'supervisor';
+          setIsAdmin(userIsAdmin);
+          setIsSupervisor(userIsSupervisor);
 
-          if (profile.role === 'admin') {
+          if (userIsAdmin || userIsSupervisor) {
             const { data: employeesData } = await supabase
               .from('profiles')
               .select('id, full_name')
@@ -285,8 +289,8 @@ export function TimeEntriesPage() {
             location: entry.location,
             lunch_break: entry.has_lunch_break ? entry.lunch_break : null,
             notes: entry.notes,
-            user_id: isAdmin ? entry.user_id : userId,
-            full_name: isAdmin ? entry.full_name : currentUserProfile?.full_name,
+            user_id: (isAdmin || isSupervisor) ? entry.user_id : userId,
+            full_name: (isAdmin || isSupervisor) ? entry.full_name : currentUserProfile?.full_name,
             work_type: workTypeForDb,
             work_type_other: entry.work_type_other || null
           })
@@ -306,7 +310,7 @@ export function TimeEntriesPage() {
                 const blob = await response.blob();
                 const fileExt = blob.type.split('/')[1];
                 const fileName = `${crypto.randomUUID()}.${fileExt}`;
-                const filePath = `${isAdmin ? entry.user_id : userId}/${fileName}`;
+                const filePath = `${(isAdmin || isSupervisor) ? entry.user_id : userId}/${fileName}`;
 
                 const { error: uploadError } = await supabase.storage
                   .from('receipts')
@@ -352,7 +356,7 @@ export function TimeEntriesPage() {
               .from('expenses')
               .insert({
                 time_entry_id: timeEntry.id,
-                user_id: isAdmin ? entry.user_id : userId,
+                user_id: (isAdmin || isSupervisor) ? entry.user_id : userId,
                 amount: expense.amount,
                 description: expense.description,
                 retailer_id: retailerId,
@@ -377,6 +381,8 @@ export function TimeEntriesPage() {
   };
 
   const handleEmployeeSelect = (employeeId: string, employeeName: string, entryIndex: number) => {
+    if (!isSupervisor) return; // Only allow Supervisors to select employees
+
     const newEntries = [...entries];
     newEntries[entryIndex].user_id = employeeId;
     newEntries[entryIndex].full_name = employeeName;
@@ -504,7 +510,7 @@ export function TimeEntriesPage() {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-                {isAdmin && (
+                {(isAdmin || isSupervisor) && (
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Employee</label>
                     <div className="relative" ref={employeeDropdownRef}>

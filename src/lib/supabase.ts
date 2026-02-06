@@ -54,3 +54,22 @@ export async function clearAllUserData() {
     throw error;
   }
 }
+
+// Add a helper function to check user roles
+export async function getUserRole(): Promise<string | null> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
+
+  const { data: profile, error } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .single();
+
+  if (error) {
+    console.error('Error fetching user role:', error);
+    return null;
+  }
+
+  return profile?.role || null;
+}

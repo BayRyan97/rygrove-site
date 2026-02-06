@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Shield, Save, Search, ChevronDown, Calendar, Clock, MapPin, DollarSign, User, Filter, Edit2, X, Check, Download, Plus, UserPlus, Key, Trash2 } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { supabase, getUserRole } from '../lib/supabase';
 import { format, parseISO, differenceInMinutes, subDays } from 'date-fns';
 
 interface TimeEntry {
@@ -106,6 +106,13 @@ function AdminPage() {
         .single();
 
       if (error) throw error;
+
+      // Restrict supervisors from accessing admin dashboard
+      if (profile?.role === 'supervisor') {
+        alert('Access denied: Supervisors cannot access the Admin Dashboard.');
+        window.location.href = '/';
+        return;
+      }
 
       if (profile?.role !== 'admin') {
         throw new Error('Not authorized');
@@ -844,6 +851,7 @@ function AdminPage() {
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="employee">Employee</option>
+                  <option value="supervisor">Supervisor</option>
                   <option value="admin">Admin</option>
                 </select>
               </div>
