@@ -137,6 +137,10 @@ const calculateDuration = (start: string, end: string, lunchBreak: string | null
   return minutes / 60;
 };
 
+const formatHours = (hours: number): string => {
+  return Number.isInteger(hours) ? hours.toString() : hours.toFixed(1);
+};
+
 // Format number as currency with commas
 const formatCurrency = (amount: number): string => {
   return new Intl.NumberFormat('en-US', {
@@ -828,11 +832,11 @@ export function ViewActivityPage() {
             entry.is_full_day ? '09:00' : entry.start_time,
             entry.is_full_day ? '17:00' : entry.end_time,
             entry.lunch_break || '',
-            calculateDuration(
+            formatHours(calculateDuration(
               entry.is_full_day ? '09:00' : entry.start_time,
               entry.is_full_day ? '17:00' : entry.end_time,
               entry.lunch_break
-            ).toString(),
+            )),
             (entry.rate || 0).toString(),
             entry.is_full_day ? 'Yes' : 'No',
             entry.work_type?.join('; ') || '',
@@ -1058,11 +1062,15 @@ export function ViewActivityPage() {
 
       {entries.length > 0 && (
         <>
-          <div className={`grid grid-cols-1 md:grid-cols-2 ${isSupervisor ? 'lg:grid-cols-3' : 'lg:grid-cols-4'} gap-4 ${isSupervisor ? 'justify-items-center' : ''}`}>
+          <div className={`grid grid-cols-1 md:grid-cols-2 ${
+            isSupervisor 
+              ? (summary.totalExpenses > 0 ? 'lg:grid-cols-3' : 'lg:grid-cols-2')
+              : (summary.totalExpenses > 0 ? 'lg:grid-cols-4' : 'lg:grid-cols-3')
+          } gap-4 ${isSupervisor ? 'justify-items-center' : ''}`}>
             <div className="bg-white rounded-lg shadow-sm p-4 border border-gray-200 flex flex-col items-center justify-center text-center w-full">
               <h3 className="text-sm font-medium text-gray-500 mb-1">Total Hours</h3>
               <p className="text-2xl font-semibold text-gray-900">
-                {summary.totalHours.toFixed(1)}
+                {formatHours(summary.totalHours)}
               </p>
             </div>
             {!isSupervisor && (
@@ -1073,12 +1081,14 @@ export function ViewActivityPage() {
                 </p>
               </div>
             )}
-            <div className="bg-white rounded-lg shadow-sm p-4 border border-gray-200 flex flex-col items-center justify-center text-center w-full">
-              <h3 className="text-sm font-medium text-gray-500 mb-1">Total Expenses</h3>
-              <p className="text-2xl font-semibold text-gray-900">
-                {formatCurrency(summary.totalExpenses)}
-              </p>
-            </div>
+            {summary.totalExpenses > 0 && (
+              <div className="bg-white rounded-lg shadow-sm p-4 border border-gray-200 flex flex-col items-center justify-center text-center w-full">
+                <h3 className="text-sm font-medium text-gray-500 mb-1">Total Expenses</h3>
+                <p className="text-2xl font-semibold text-gray-900">
+                  {formatCurrency(summary.totalExpenses)}
+                </p>
+              </div>
+            )}
             <div className="bg-white rounded-lg shadow-sm p-4 border border-gray-200 flex flex-col items-center justify-center text-center w-full">
               <h3 className="text-sm font-medium text-gray-500 mb-1">Unique Locations</h3>
               <p className="text-2xl font-semibold text-gray-900">
@@ -1162,7 +1172,7 @@ export function ViewActivityPage() {
                       <div className="flex items-center gap-6">
                         <div>
                           <p className="text-xs text-gray-500">Hours</p>
-                          <p className="text-lg font-semibold text-gray-900">{personGroup.totalHours.toFixed(1)}</p>
+                          <p className="text-lg font-semibold text-gray-900">{formatHours(personGroup.totalHours)}</p>
                         </div>
                         {!isSupervisor && (
                           <div>
@@ -1210,7 +1220,7 @@ export function ViewActivityPage() {
                                   <div className="flex items-center gap-4">
                                     <div>
                                       <p className="text-xs text-gray-500">Hours</p>
-                                      <p className="text-sm font-semibold text-gray-900">{locationGroup.totalHours.toFixed(1)}</p>
+                                      <p className="text-sm font-semibold text-gray-900">{formatHours(locationGroup.totalHours)}</p>
                                     </div>
                                     <div>
                                       <p className="text-xs text-gray-500">Expenses</p>
@@ -1388,7 +1398,7 @@ export function ViewActivityPage() {
                                                       </p>
                                                     )}
                                                     <p className="text-sm font-semibold text-blue-600 mt-1">
-                                                      {calculateDuration(entry.start_time, entry.end_time, entry.lunch_break).toFixed(1)} hrs
+                                                      {formatHours(calculateDuration(entry.start_time, entry.end_time, entry.lunch_break))} hrs
                                                     </p>
                                                   </div>
                                                   {isAdmin && (
