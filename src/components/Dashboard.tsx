@@ -126,9 +126,12 @@ export function Dashboard({ user }: DashboardProps) {
         <div className="container mx-auto px-4">
           <div className="h-16 flex items-center justify-between">
             <div className="flex items-center">
-              <span className="text-2xl font-bold text-blue-600 tracking-tight">
+              <button
+                onClick={() => setActiveTab('view-activity')}
+                className="text-2xl font-bold text-blue-600 tracking-tight hover:text-blue-700 transition-colors cursor-pointer"
+              >
                 RY<span className="text-blue-500">GROVE</span>
-              </span>
+              </button>
               <div className="h-6 w-[2px] bg-blue-200 mx-3 hidden sm:block" />
               <div className="relative" ref={dropdownRef}>
                 <button
