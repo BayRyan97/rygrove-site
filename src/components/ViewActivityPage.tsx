@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { format, parseISO, differenceInMinutes, eachDayOfInterval, subDays, subMonths, startOfQuarter, subQuarters, subYears } from 'date-fns';
 import { Calendar, Search, User, MapPin, ChevronDown, ChevronRight, X, Download, Trash2 } from 'lucide-react';
 import { supabase, getUserRole } from '../lib/supabase';
+import { generateActivityPDF } from '../lib/pdfExport';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -882,6 +883,15 @@ export function ViewActivityPage() {
     }
   };
 
+  const exportToPDF = () => {
+    try {
+      generateActivityPDF(entries, summary, startDate, endDate, personName, location, isSupervisor);
+    } catch (error) {
+      console.error('Error exporting to PDF:', error);
+      alert('Failed to export data to PDF. Please try again.');
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
@@ -1136,13 +1146,22 @@ export function ViewActivityPage() {
           )}
 
           <div className="flex justify-end mb-4">
-            <button
-              onClick={exportToCSV}
-              className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-            >
-              <Download className="h-4 w-4 mr-2" />
-              Export to CSV
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={exportToPDF}
+                className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Export to PDF
+              </button>
+              <button
+                onClick={exportToCSV}
+                className="flex items-center px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Export to CSV
+              </button>
+            </div>
           </div>
 
           <div className="space-y-4">
