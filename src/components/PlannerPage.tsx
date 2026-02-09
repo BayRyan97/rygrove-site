@@ -119,6 +119,12 @@ export default function PlannerPage() {
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
   const [hasInitializedCollapse, setHasInitializedCollapse] = useState(false);
 
+  // Bulk selection states
+  const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
+  const [selectedNoteIds, setSelectedNoteIds] = useState<Set<string>>(new Set());
+  const [showBulkTaskActions, setShowBulkTaskActions] = useState(false);
+  const [showBulkNoteActions, setShowBulkNoteActions] = useState(false);
+
   // Form states
   const [projectForm, setProjectForm] = useState({ name: '', description: '' });
   const [categoryForm, setCategoryForm] = useState({ name: '', color_index: 0, custom_color: '' });
@@ -661,6 +667,10 @@ export default function PlannerPage() {
   // Generate viewport days
   const viewportDays = eachDayOfInterval({ start: viewportStart, end: viewportEnd });
 
+  // Calculate today's position for indicator line
+  const todayIndex = viewportDays.findIndex(d => isSameDay(d, new Date()));
+  const todayPositionPx = todayIndex !== -1 ? todayIndex * 70 : null;
+
   const getTaskPosition = (task: PlannerTask) => {
     const taskStart = parseISO(task.start_date);
     const taskEnd = parseISO(task.end_date);
@@ -846,6 +856,67 @@ export default function PlannerPage() {
         })()}
       </div>
 
+      {/* Bulk Task Actions */}
+      {showBulkTaskActions && isAdmin && (
+        <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-white rounded-lg shadow-2xl p-4 flex gap-3 z-50 border-2 border-blue-500">
+          <span className="text-sm font-medium text-gray-700 flex items-center">
+            {selectedTaskIds.size} task{selectedTaskIds.size !== 1 ? 's' : ''} selected
+          </span>
+          <button
+            onClick={async () => {
+              for (const taskId of selectedTaskIds) {
+                await completeTask(taskId, true);
+              }
+              setSelectedTaskIds(new Set());
+              setShowBulkTaskActions(false);
+            }}
+            className="px-3 py-1.5 bg-green-600 text-white rounded hover:bg-green-700 text-sm"
+          >
+            Mark Complete
+          </button>
+          <select
+            onChange={async (e) => {
+              if (e.target.value) {
+                for (const taskId of selectedTaskIds) {
+                  await updateTask(taskId, { category_id: e.target.value });
+                }
+                setSelectedTaskIds(new Set());
+                setShowBulkTaskActions(false);
+              }
+            }}
+            className="px-3 py-1.5 border rounded text-sm"
+          >
+            <option value="">Move to Category...</option>
+            {categories.map(c => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+          <button
+            onClick={async () => {
+              if (confirm(`Delete ${selectedTaskIds.size} task(s)?`)) {
+                for (const taskId of selectedTaskIds) {
+                  await deleteTask(taskId);
+                }
+                setSelectedTaskIds(new Set());
+                setShowBulkTaskActions(false);
+              }
+            }}
+            className="px-3 py-1.5 bg-red-600 text-white rounded hover:bg-red-700 text-sm"
+          >
+            Delete
+          </button>
+          <button
+            onClick={() => {
+              setSelectedTaskIds(new Set());
+              setShowBulkTaskActions(false);
+            }}
+            className="px-3 py-1.5 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 text-sm"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+
       {/* Gantt Chart */}
       {selectedProjectId && (
         <div className="bg-gradient-to-br from-gray-50 to-white rounded-2xl shadow-2xl overflow-hidden">
@@ -853,8 +924,29 @@ export default function PlannerPage() {
             {/* Left Column - Frozen */}
             <div className="w-72 flex-shrink-0 bg-white/50 backdrop-blur-sm border-r border-gray-200/50 flex flex-col">
               {/* Header */}
-              <div className="sticky top-0 bg-white/90 backdrop-blur-md p-4 font-bold text-base text-gray-900 flex items-center z-10" style={{ height: '68px' }}>
-                Tasks
+              <div className="sticky top-0 bg-white/90 backdrop-blur-md p-4 font-bold text-base text-gray-900 flex items-center justify-between z-10" style={{ height: '68px' }}>
+                <div className="flex items-center gap-3">
+                  {isAdmin && (
+                    <input
+                      type="checkbox"
+                      checked={tasks.length > 0 && selectedTaskIds.size === tasks.length}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedTaskIds(new Set(tasks.map(t => t.id)));
+                          setShowBulkTaskActions(true);
+                        } else {
+                          setSelectedTaskIds(new Set());
+                          setShowBulkTaskActions(false);
+                        }
+                      }}
+                      className="w-4 h-4 rounded"
+                    />
+                  )}
+                  <span>Tasks</span>
+                </div>
+                {showBulkTaskActions && (
+                  <span className="text-sm text-blue-600">{selectedTaskIds.size} selected</span>
+                )}
               </div>
               {/* Content */}
               <div className="overflow-y-auto flex-1">
@@ -898,8 +990,17 @@ export default function PlannerPage() {
                             {isAdmin && (
                               <input
                                 type="checkbox"
-                                checked={isCompleted}
-                                onChange={(e) => completeTask(task.id, e.target.checked)}
+                                checked={selectedTaskIds.has(task.id)}
+                                onChange={(e) => {
+                                  const newSelected = new Set(selectedTaskIds);
+                                  if (e.target.checked) {
+                                    newSelected.add(task.id);
+                                  } else {
+                                    newSelected.delete(task.id);
+                                  }
+                                  setSelectedTaskIds(newSelected);
+                                  setShowBulkTaskActions(newSelected.size > 0);
+                                }}
                                 className="w-4 h-4 rounded flex-shrink-0"
                                 onClick={(e) => e.stopPropagation()}
                               />
@@ -992,6 +1093,18 @@ export default function PlannerPage() {
 
                 {/* Task Bars Container */}
                 <div className="flex-1 relative" style={{ backgroundImage: `linear-gradient(90deg, transparent 0%, transparent calc(70px - 1px), rgba(209, 213, 219, 0.3) calc(70px - 1px), rgba(209, 213, 219, 0.3) 70px)`, backgroundSize: '70px 100%', backgroundRepeat: 'repeat' }}>
+                  {/* Today Indicator Line */}
+                  {todayPositionPx !== null && (
+                    <div
+                      className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-20 pointer-events-none"
+                      style={{
+                        left: `${todayPositionPx + 35}px`,
+                        boxShadow: '0 0 8px rgba(239, 68, 68, 0.5)'
+                      }}
+                    >
+                      <div className="absolute -top-2 -left-2 w-4 h-4 bg-red-500 rounded-full border-2 border-white shadow-lg" />
+                    </div>
+                  )}
                   <div style={{ minWidth: `${viewportDays.length * 70}px` }}>
                     {groupedTasks.map((group, groupIdx) => {
                       // Calculate min/max dates for category
@@ -1047,7 +1160,7 @@ export default function PlannerPage() {
                         return (
                           <div 
                             key={taskIdx} 
-                            className="h-14 flex items-center hover:bg-white/40 transition-colors relative"
+                            className={`h-14 flex items-center hover:bg-white/40 transition-colors relative bg-gradient-to-r ${getCategoryColor(group.category.id).light} bg-opacity-30`}
                             style={{ minWidth: `${viewportDays.length * 70}px` }}
                           >
                             {position && (
@@ -1100,13 +1213,69 @@ export default function PlannerPage() {
           </div>
       )}
 
+      {/* Bulk Note Actions */}
+      {showBulkNoteActions && (
+        <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-white rounded-lg shadow-2xl p-4 flex gap-3 z-50 border-2 border-yellow-500">
+          <span className="text-sm font-medium text-gray-700 flex items-center">
+            {selectedNoteIds.size} note{selectedNoteIds.size !== 1 ? 's' : ''} selected
+          </span>
+          <select
+            onChange={async (e) => {
+              const categoryId = e.target.value || null;
+              for (const noteId of selectedNoteIds) {
+                const note = notes.find(n => n.id === noteId);
+                if (note) {
+                  await supabase
+                    .from('planner_notes')
+                    .update({ category_id: categoryId, updated_by: currentUser })
+                    .eq('id', noteId);
+                }
+              }
+              await fetchNotes();
+              setSelectedNoteIds(new Set());
+              setShowBulkNoteActions(false);
+            }}
+            className="px-3 py-1.5 border rounded text-sm"
+          >
+            <option value="">Move to Category...</option>
+            <option value="">No category</option>
+            {categories.map(c => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+          <button
+            onClick={async () => {
+              if (confirm(`Delete ${selectedNoteIds.size} note(s)?`)) {
+                for (const noteId of selectedNoteIds) {
+                  await deleteNote(noteId);
+                }
+                setSelectedNoteIds(new Set());
+                setShowBulkNoteActions(false);
+              }
+            }}
+            className="px-3 py-1.5 bg-red-600 text-white rounded hover:bg-red-700 text-sm"
+          >
+            Delete
+          </button>
+          <button
+            onClick={() => {
+              setSelectedNoteIds(new Set());
+              setShowBulkNoteActions(false);
+            }}
+            className="px-3 py-1.5 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 text-sm"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+
       {/* Notes Board */}
       {selectedProjectId && (
         <div className="bg-gradient-to-br from-gray-50 to-white rounded-2xl shadow-2xl p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="flex items-center text-xl font-bold text-gray-900">
               <StickyNote className="mr-2" size={24} />
-              Notes Board
+              Note Board
             </h2>
             <button
               onClick={() => setShowNoteModal(true)}
@@ -1130,9 +1299,29 @@ export default function PlannerPage() {
                 <div
                   key={note.id}
                   onClick={() => openNoteDetail(note)}
-                  className={`${bgColor} ${borderColor} border-2 rounded-lg p-4 shadow-lg hover:shadow-2xl transition-all duration-200 ${rotation} relative group cursor-pointer`}
+                  className={`${bgColor} ${borderColor} border-2 rounded-lg p-4 shadow-lg hover:shadow-2xl transition-all duration-200 ${rotation} relative group cursor-pointer ${
+                    selectedNoteIds.has(note.id) ? 'ring-4 ring-blue-500' : ''
+                  }`}
                   style={{ minHeight: '180px' }}
                 >
+                  {/* Selection checkbox */}
+                  <input
+                    type="checkbox"
+                    checked={selectedNoteIds.has(note.id)}
+                    onChange={(e) => {
+                      const newSelected = new Set(selectedNoteIds);
+                      if (e.target.checked) {
+                        newSelected.add(note.id);
+                      } else {
+                        newSelected.delete(note.id);
+                      }
+                      setSelectedNoteIds(newSelected);
+                      setShowBulkNoteActions(newSelected.size > 0);
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    className="absolute top-2 left-2 w-5 h-5 rounded cursor-pointer z-10"
+                  />
+
                   {/* Delete button */}
                   <button
                     onClick={(e) => {
@@ -1146,7 +1335,7 @@ export default function PlannerPage() {
                   </button>
 
                   {/* Title */}
-                  <h3 className="font-bold text-gray-900 mb-2 pr-6">
+                  <h3 className="font-bold text-gray-900 mb-2 pr-6 pl-8">
                     {note.title}
                   </h3>
 
