@@ -903,6 +903,12 @@ export function ViewActivityPage() {
               <select
                 value={dateRangeOption}
                 onChange={(e) => handleDateRangeChange(e.target.value as DateRangeOption)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    fetchEntries();
+                  }
+                }}
                 className="w-full pl-10 pr-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 appearance-none"
               >
                 <option value="week">Last Week</option>
@@ -925,6 +931,12 @@ export function ViewActivityPage() {
                     type="date"
                     value={startDate}
                     onChange={(e) => setStartDate(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        fetchEntries();
+                      }
+                    }}
                     className="w-full pl-10 pr-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
@@ -937,6 +949,12 @@ export function ViewActivityPage() {
                     type="date"
                     value={endDate}
                     onChange={(e) => setEndDate(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        fetchEntries();
+                      }
+                    }}
                     className="w-full pl-10 pr-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
@@ -950,6 +968,12 @@ export function ViewActivityPage() {
               <select
                 value={personName}
                 onChange={(e) => setPersonName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    fetchEntries();
+                  }
+                }}
                 className="w-full pl-10 pr-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 appearance-none"
               >
                 <option value="">All Users</option>

@@ -62,6 +62,7 @@ export function TimeEntriesPage() {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const employeeDropdownRef = useRef<HTMLDivElement>(null);
   const retailerDropdownRef = useRef<HTMLDivElement>(null);
+  const entryRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
   // Add click-away event listeners
   useEffect(() => {
@@ -399,7 +400,15 @@ export function TimeEntriesPage() {
   };
 
   const addSameDayEntry = () => {
-    setEntries([...entries, createDefaultEntry()]);
+    const newEntry = createDefaultEntry();
+    setEntries([...entries, newEntry]);
+    // Scroll to new entry after state update
+    setTimeout(() => {
+      const element = entryRefs.current.get(newEntry.id);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 100);
   };
 
   const clearForm = () => {
@@ -434,6 +443,13 @@ export function TimeEntriesPage() {
     const newEntries = [...entries];
     newEntries.splice(entryIndex + 1, 0, newEntry);
     setEntries(newEntries);
+    // Scroll to duplicated entry after state update
+    setTimeout(() => {
+      const element = entryRefs.current.get(newEntry.id);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 100);
   };
 
   const addExpense = (entryIndex: number) => {
@@ -506,7 +522,14 @@ export function TimeEntriesPage() {
       <form onSubmit={handleSubmit}>
         <div className="space-y-6 mb-8">
           {entries.map((entry, entryIndex) => (
-            <div key={entry.id} className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+            <div 
+              key={entry.id} 
+              ref={(el) => {
+                if (el) entryRefs.current.set(entry.id, el);
+                else entryRefs.current.delete(entry.id);
+              }}
+              className="bg-white rounded-lg shadow-sm p-6 border border-gray-200"
+            >
               <div className="flex justify-between items-start mb-4">
                 <h3 className="text-lg font-medium text-gray-900">
                   Time Entry {entryIndex + 1}
