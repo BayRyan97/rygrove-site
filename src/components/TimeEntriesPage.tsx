@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, RefreshCw, MapPin, ChevronDown, DollarSign, User, Store, Upload, Trash2, X } from 'lucide-react';
+import { Plus, RefreshCw, MapPin, ChevronDown, DollarSign, User, Store, Upload, Trash2, X, Copy } from 'lucide-react';
 import { supabase, getUserRole } from '../lib/supabase';
-import { format, parseISO, differenceInMinutes } from 'date-fns';
+import { format, parseISO, differenceInMinutes, addDays } from 'date-fns';
 
 interface Profile {
   id: string;
@@ -423,6 +423,19 @@ export function TimeEntriesPage() {
     }
   };
 
+  const duplicateEntry = (entryIndex: number) => {
+    const entryToDuplicate = entries[entryIndex];
+    const newEntry: TimeEntry = {
+      ...entryToDuplicate,
+      id: crypto.randomUUID(),
+      date: format(addDays(parseISO(entryToDuplicate.date), 1), 'yyyy-MM-dd'),
+      expenses: [] // Clear expenses for the new entry
+    };
+    const newEntries = [...entries];
+    newEntries.splice(entryIndex + 1, 0, newEntry);
+    setEntries(newEntries);
+  };
+
   const addExpense = (entryIndex: number) => {
     const newEntries = [...entries];
     newEntries[entryIndex].expenses.push(createDefaultExpense());
@@ -498,15 +511,25 @@ export function TimeEntriesPage() {
                 <h3 className="text-lg font-medium text-gray-900">
                   Time Entry {entryIndex + 1}
                 </h3>
-                {entries.length > 1 && (
+                <div className="flex gap-2">
                   <button
                     type="button"
-                    onClick={() => removeEntry(entryIndex)}
-                    className="text-red-600 hover:text-red-800"
+                    onClick={() => duplicateEntry(entryIndex)}
+                    className="text-blue-600 hover:text-blue-800"
+                    title="Duplicate this entry"
                   >
-                    <Trash2 className="h-5 w-5" />
+                    <Copy className="h-5 w-5" />
                   </button>
-                )}
+                  {entries.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => removeEntry(entryIndex)}
+                      className="text-red-600 hover:text-red-800"
+                    >
+                      <Trash2 className="h-5 w-5" />
+                    </button>
+                  )}
+                </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
@@ -794,8 +817,7 @@ export function TimeEntriesPage() {
                           setEntries(newEntries);
                         }}
                         className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                        placeholder="Describe other work type"
-                        required={entry.work_type?.[0] === 'Other'}
+                        placeholder="Describe other work type (optional)"
                       />
                     </div>
                   )}
