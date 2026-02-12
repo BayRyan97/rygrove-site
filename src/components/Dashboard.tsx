@@ -9,6 +9,7 @@ import { CreateInvoicePage } from './CreateInvoicePage';
 import { ExpensePage } from './ExpensePage';
 import { EstimateWorksheetPage } from './EstimateWorksheetPage';
 import PlannerPage from './PlannerPage';
+import { ProfilePictureUploader } from './ProfilePictureUploader';
 
 interface DashboardProps {
   user: SupabaseUser;
@@ -17,6 +18,12 @@ interface DashboardProps {
 interface Profile {
   full_name: string;
   role?: string;
+  profile_picture_url?: string;
+  picture_metadata?: {
+    zoom: number;
+    offsetX: number;
+    offsetY: number;
+  };
 }
 
 interface MenuItem {
@@ -85,11 +92,24 @@ export function Dashboard({ user }: DashboardProps) {
     return menuItems.find(item => item.id === activeTab)?.label || 'Dashboard';
   };
 
+  const fetchProfile = async () => {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('full_name, role, profile_picture_url, picture_metadata')
+      .eq('id', user.id)
+      .single();
+    
+    if (!error && data) {
+      setProfile(data);
+      setIsAdmin(data.role === 'admin');
+    }
+  };
+
   useEffect(() => {
     async function getProfile() {
       const { data, error } = await supabase
         .from('profiles')
-        .select('full_name, role')
+        .select('full_name, role, profile_picture_url, picture_metadata')
         .eq('id', user.id)
         .single();
       
@@ -177,16 +197,47 @@ export function Dashboard({ user }: DashboardProps) {
                     <div className="text-sm font-medium text-gray-800">{profile?.full_name}</div>
                     <div className="text-xs text-gray-500">{user.email}</div>
                   </div>
-                  <User className="h-5 w-5 text-gray-400" />
+                  {profile?.profile_picture_url ? (
+                    <img
+                      src={profile.profile_picture_url}
+                      alt="Profile"
+                      className="h-8 w-8 rounded-full object-cover border border-gray-200"
+                      style={
+                        profile.picture_metadata
+                          ? {
+                              transform: `scale(${profile.picture_metadata.zoom}) translate(${profile.picture_metadata.offsetX}%, ${profile.picture_metadata.offsetY}%)`
+                            }
+                          : undefined
+                      }
+                    />
+                  ) : (
+                    <User className="h-5 w-5 text-gray-400" />
+                  )}
                 </button>
                 {isUserDropdownOpen && (
-                  <div className="absolute top-full right-0 mt-1 w-48 bg-white rounded-xl shadow-xl border border-gray-200 py-1">
+                  <div className="absolute top-full right-0 mt-1 w-[500px] bg-white rounded-xl shadow-xl border border-gray-200 p-4 z-50 max-h-[90vh] overflow-y-auto">
+                    <div className="mb-4 pb-4 border-b border-gray-200">
+                      <h3 className="font-medium text-gray-900 mb-3">Profile Picture</h3>
+                      <ProfilePictureUploader
+                        userId={user.id}
+                        currentPictureUrl={profile?.profile_picture_url}
+                        currentMetadata={profile?.picture_metadata}
+                        onSuccess={(url, metadata) => {
+                          setProfile(prev => prev ? {
+                            ...prev,
+                            profile_picture_url: url,
+                            picture_metadata: metadata
+                          } : null);
+                        }}
+                      />
+                    </div>
+                    
                     <button
                       onClick={() => {
                         handleSignOut();
                         setIsUserDropdownOpen(false);
                       }}
-                      className="w-full flex items-center space-x-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+                      className="w-full flex items-center space-x-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg"
                     >
                       <LogOut className="h-4 w-4" />
                       <span>Sign Out</span>

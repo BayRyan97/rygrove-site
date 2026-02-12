@@ -73,3 +73,88 @@ export async function getUserRole(): Promise<string | null> {
 
   return profile?.role || null;
 }
+
+// Profile picture helpers
+export interface PictureMetadata {
+  zoom: number;
+  offsetX: number;
+  offsetY: number;
+}
+
+export async function uploadProfilePicture(
+  file: File,
+  userId: string,
+  metadata: PictureMetadata
+) {
+  try {
+    // Generate unique filename
+    const timestamp = Date.now();
+    const filePath = `${userId}/${timestamp}-${file.name}`;
+
+    // Upload to avatars bucket
+    const { error: uploadError } = await supabase.storage
+      .from('avatars')
+      .upload(filePath, file, { upsert: false });
+
+    if (uploadError) throw uploadError;
+
+    // Get public URL
+    const { data: { publicUrl } } = supabase.storage
+      .from('avatars')
+      .getPublicUrl(filePath);
+
+    // Update profile with picture URL and metadata
+    const { error: updateError } = await supabase
+      .from('profiles')
+      .update({
+        profile_picture_url: publicUrl,
+        picture_metadata: metadata
+      })
+      .eq('id', userId);
+
+    if (updateError) throw updateError;
+
+    return { success: true, publicUrl, metadata };
+  } catch (error) {
+    console.error('Error uploading profile picture:', error);
+    throw error;
+  }
+}
+
+export async function deleteProfilePicture(userId: string) {
+  try {
+    // Get current profile to find old picture path
+    const { data: profile, error: fetchError } = await supabase
+      .from('profiles')
+      .select('profile_picture_url')
+      .eq('id', userId)
+      .single();
+
+    if (fetchError) throw fetchError;
+
+    // Delete from storage if picture exists
+    if (profile?.profile_picture_url) {
+      const url = new URL(profile.profile_picture_url);
+      const pathParts = url.pathname.split('/');
+      const filePath = pathParts.slice(-2).join('/'); // Get user_id/filename
+
+      await supabase.storage.from('avatars').remove([filePath]);
+    }
+
+    // Clear profile picture data
+    const { error: updateError } = await supabase
+      .from('profiles')
+      .update({
+        profile_picture_url: null,
+        picture_metadata: { zoom: 1, offsetX: 0, offsetY: 0 }
+      })
+      .eq('id', userId);
+
+    if (updateError) throw updateError;
+
+    return { success: true };
+  } catch (error) {
+    console.error('Error deleting profile picture:', error);
+    throw error;
+  }
+}

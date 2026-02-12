@@ -25,6 +25,12 @@ interface UserProfile {
   role: string;
   email?: string | null;
   rate?: number | null;
+  profile_picture_url?: string | null;
+  picture_metadata?: {
+    zoom: number;
+    offsetX: number;
+    offsetY: number;
+  } | null;
 }
 
 interface CreateUserForm {
@@ -180,7 +186,7 @@ function AdminPage() {
       // Fetch profiles with RLS policies handling the access control
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, full_name, role, email, rate') // Added 'rate' field
+        .select('id, full_name, role, email, rate, profile_picture_url, picture_metadata')
         .order('full_name');
 
       if (error) throw error;
@@ -911,7 +917,27 @@ function AdminPage() {
               {filteredUsers.map((user) => (
                 <tr key={user.id}>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-medium text-gray-900">{user.full_name}</div>
+                    <div className="flex items-center space-x-3">
+                      {user.profile_picture_url ? (
+                        <img
+                          src={user.profile_picture_url}
+                          alt={user.full_name}
+                          className="h-8 w-8 rounded-full object-cover border border-gray-200"
+                          style={
+                            user.picture_metadata
+                              ? {
+                                  transform: `scale(${user.picture_metadata.zoom}) translate(${user.picture_metadata.offsetX}%, ${user.picture_metadata.offsetY}%)`
+                                }
+                              : undefined
+                          }
+                        />
+                      ) : (
+                        <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center">
+                          <User className="h-5 w-5 text-gray-400" />
+                        </div>
+                      )}
+                      <div className="text-sm font-medium text-gray-900">{user.full_name}</div>
+                    </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm text-gray-500">{user.email || 'No email'}</div>
