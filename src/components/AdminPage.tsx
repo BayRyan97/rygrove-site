@@ -920,7 +920,7 @@ function AdminPage() {
                     <div className="flex items-center space-x-3">
                       {user.profile_picture_url ? (
                         <img
-                          src={user.profile_picture_url}
+                          src={`${user.profile_picture_url}?t=${Date.now()}`}
                           alt={user.full_name}
                           className="h-8 w-8 rounded-full object-cover border border-gray-200"
                           style={

@@ -112,7 +112,15 @@ export async function uploadProfilePicture(
       })
       .eq('id', userId);
 
-    if (updateError) throw updateError;
+    if (updateError) {
+      console.error('Profile update error details:', {
+        message: updateError.message,
+        code: updateError.code,
+        details: updateError.details,
+        hint: updateError.hint
+      });
+      throw updateError;
+    }
 
     return { success: true, publicUrl, metadata };
   } catch (error) {

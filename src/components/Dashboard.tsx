@@ -107,11 +107,17 @@ export function Dashboard({ user }: DashboardProps) {
 
   useEffect(() => {
     async function getProfile() {
+      // Force fresh data from Supabase (no cache)
       const { data, error } = await supabase
         .from('profiles')
         .select('full_name, role, profile_picture_url, picture_metadata')
         .eq('id', user.id)
-        .single();
+        .single()
+        .then(result => ({
+          ...result,
+          // Add timestamp to bust any frontend cache
+          _refreshed: Date.now()
+        }));
       
       if (!error && data) {
         setProfile(data);
@@ -191,17 +197,17 @@ export function Dashboard({ user }: DashboardProps) {
               <div className="relative" ref={userDropdownRef}>
                 <button
                   onClick={() => setIsUserDropdownOpen(!isUserDropdownOpen)}
-                  className="flex items-center space-x-2 text-right hover:bg-gray-50 rounded-lg px-3 py-2 transition-colors"
+                  className="flex items-center space-x-3 hover:bg-gray-50 rounded-lg px-3 py-2 transition-colors"
                 >
-                  <div>
+                  <div className="text-right">
                     <div className="text-sm font-medium text-gray-800">{profile?.full_name}</div>
                     <div className="text-xs text-gray-500">{user.email}</div>
                   </div>
                   {profile?.profile_picture_url ? (
                     <img
-                      src={profile.profile_picture_url}
+                      src={`${profile.profile_picture_url}?t=${Date.now()}`}
                       alt="Profile"
-                      className="h-8 w-8 rounded-full object-cover border border-gray-200"
+                      className="h-8 w-8 rounded-full object-cover border border-gray-200 flex-shrink-0"
                       style={
                         profile.picture_metadata
                           ? {

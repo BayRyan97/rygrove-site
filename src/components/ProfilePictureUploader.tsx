@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { Upload, X, ZoomIn, ZoomOut } from 'lucide-react';
 import { uploadProfilePicture, deleteProfilePicture, PictureMetadata } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
 
 interface ProfilePictureUploaderProps {
   userId: string;
@@ -22,6 +23,7 @@ export function ProfilePictureUploader({
   const [zoom, setZoom] = useState(currentMetadata.zoom);
   const [offsetX, setOffsetX] = useState(currentMetadata.offsetX);
   const [offsetY, setOffsetY] = useState(currentMetadata.offsetY);
+  const [isEditing, setIsEditing] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [isLoading, setIsLoading] = useState(false);
@@ -138,6 +140,34 @@ export function ProfilePictureUploader({
     }
   };
 
+  // Handle updating position/zoom of existing picture
+  const handleUpdatePosition = async () => {
+    if (!currentPictureUrl) return;
+
+    setIsLoading(true);
+    try {
+      const metadata: PictureMetadata = { zoom, offsetX, offsetY };
+      
+      // Update the profile with new metadata without re-uploading
+      const { error } = await supabase
+        .from('profiles')
+        .update({ picture_metadata: metadata })
+        .eq('id', userId);
+
+      if (error) throw error;
+
+      onSuccess?.(currentPictureUrl, metadata);
+      setIsEditing(false);
+      setError(null);
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error('Update failed');
+      setError(error.message);
+      onError?.(error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // Handle delete
   const handleDelete = async () => {
     if (!currentPictureUrl) return;
@@ -195,8 +225,8 @@ export function ProfilePictureUploader({
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
             onMouseLeave={handleMouseUp}
-            className="relative w-full bg-gray-100 rounded-full overflow-hidden border-2 border-gray-300 cursor-move"
-            style={{ minHeight: '400px', aspectRatio: '1' }}
+            className="relative bg-gray-100 rounded-full overflow-hidden border-2 border-gray-300 cursor-move"
+            style={{ height: '350px', width: '350px', margin: '0 auto', aspectRatio: '1' }}
           >
             <div className="absolute inset-0 flex items-center justify-center">
               <img
@@ -263,20 +293,53 @@ export function ProfilePictureUploader({
               </>
             ) : currentPictureUrl ? (
               <>
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={isLoading}
-                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-                >
-                  Change Picture
-                </button>
-                <button
-                  onClick={handleDelete}
-                  disabled={isLoading}
-                  className="px-4 py-2 text-red-600 border border-red-300 rounded-lg hover:bg-red-50 disabled:opacity-50"
-                >
-                  <X size={20} />
-                </button>
+                {isEditing ? (
+                  <>
+                    <button
+                      onClick={() => {
+                        setIsEditing(false);
+                        setZoom(currentMetadata.zoom);
+                        setOffsetX(currentMetadata.offsetX);
+                        setOffsetY(currentMetadata.offsetY);
+                      }}
+                      disabled={isLoading}
+                      className="flex-1 px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleUpdatePosition}
+                      disabled={isLoading}
+                      className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                    >
+                      {isLoading ? 'Updating...' : 'Update Position'}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => setIsEditing(true)}
+                      disabled={isLoading}
+                      className="flex-1 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 disabled:opacity-50"
+                    >
+                      Adjust Position
+                    </button>
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={isLoading}
+                      className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                    >
+                      Change Picture
+                    </button>
+                    <button
+                      onClick={handleDelete}
+                      disabled={isLoading}
+                      className="px-4 py-2 text-red-600 border border-red-300 rounded-lg hover:bg-red-50 disabled:opacity-50"
+                    >
+                      <X size={20} />
+                    </button>
+                  </>
+                )}
               </>
             ) : null}
             <input
