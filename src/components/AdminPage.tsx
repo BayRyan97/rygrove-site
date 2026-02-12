@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Shield, Save, Search, ChevronDown, Calendar, Clock, MapPin, DollarSign, User, Filter, Edit2, X, Check, Download, Plus, UserPlus, Key, Trash2 } from 'lucide-react';
+import { Shield, Save, Search, ChevronDown, Calendar, Clock, MapPin, DollarSign, User, Filter, Edit2, X, Check, Download, Plus, UserPlus, Key, Trash2, Camera } from 'lucide-react';
 import { supabase, getUserRole } from '../lib/supabase';
+import { ProfilePictureUploader } from './ProfilePictureUploader';
 import { format, parseISO, differenceInMinutes, subDays } from 'date-fns';
 
 interface TimeEntry {
@@ -85,6 +86,7 @@ function AdminPage() {
   const [resetPasswordUserId, setResetPasswordUserId] = useState<string | null>(null);
   const [isResettingPassword, setIsResettingPassword] = useState(false);
   const [rateEditValues, setRateEditValues] = useState<{ [key: string]: string }>({});
+  const [editingProfilePicture, setEditingProfilePicture] = useState<UserProfile | null>(null);
 
   useEffect(() => {
     checkAdminStatus();
@@ -966,36 +968,47 @@ function AdminPage() {
                       </button>
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm space-x-2">
-                    <select
-                      value={user.role}
-                      onChange={(e) => updateUserRole(user.id, e.target.value)}
-                      disabled={isSaving}
-                      className="px-3 py-1 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="employee">Employee</option>
-                      <option value="supervisor">Supervisor</option>
-                      <option value="admin">Admin</option>
-                    </select>
-                    {user.email && (
-                      <button
-                        onClick={() => resetUserPassword(user.id, user.email!)}
-                        disabled={isResettingPassword && resetPasswordUserId === user.id}
-                        className="inline-flex items-center px-3 py-1 border border-orange-300 rounded-lg text-orange-600 hover:bg-orange-50 disabled:opacity-50"
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="flex flex-col space-y-2">
+                      <select
+                        value={user.role}
+                        onChange={(e) => updateUserRole(user.id, e.target.value)}
+                        disabled={isSaving}
+                        className="px-3 py-1 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                       >
-                        {isResettingPassword && resetPasswordUserId === user.id ? (
-                          <>
-                            <div className="animate-spin h-3 w-3 border-2 border-orange-600 border-t-transparent rounded-full mr-1"></div>
-                            Resetting...
-                          </>
-                        ) : (
-                          <>
-                            <Key className="h-3 w-3 mr-1" />
-                            Reset Password
-                          </>
+                        <option value="employee">Employee</option>
+                        <option value="supervisor">Supervisor</option>
+                        <option value="admin">Admin</option>
+                      </select>
+                      <div className="flex space-x-2">
+                        <button
+                          onClick={() => setEditingProfilePicture(user)}
+                          className="inline-flex items-center px-3 py-1 border border-blue-300 rounded-lg text-blue-600 hover:bg-blue-50 text-sm"
+                        >
+                          <Camera className="h-3 w-3 mr-1" />
+                          Profile Picture
+                        </button>
+                        {user.email && (
+                          <button
+                            onClick={() => resetUserPassword(user.id, user.email!)}
+                            disabled={isResettingPassword && resetPasswordUserId === user.id}
+                            className="inline-flex items-center px-3 py-1 border border-orange-300 rounded-lg text-orange-600 hover:bg-orange-50 disabled:opacity-50 text-sm"
+                          >
+                            {isResettingPassword && resetPasswordUserId === user.id ? (
+                              <>
+                                <div className="animate-spin h-3 w-3 border-2 border-orange-600 border-t-transparent rounded-full mr-1"></div>
+                                Resetting...
+                              </>
+                            ) : (
+                              <>
+                                <Key className="h-3 w-3 mr-1" />
+                                Reset Password
+                              </>
+                            )}
+                          </button>
                         )}
-                      </button>
-                    )}
+                      </div>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -1232,6 +1245,45 @@ function AdminPage() {
                 <p className="text-gray-500">No time entries found for the selected criteria.</p>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Profile Picture Upload Modal */}
+      {editingProfilePicture && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-800">
+                Profile Picture for {editingProfilePicture.full_name}
+              </h3>
+              <button
+                onClick={() => setEditingProfilePicture(null)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="p-6">
+              <ProfilePictureUploader
+                userId={editingProfilePicture.id}
+                currentPictureUrl={editingProfilePicture.profile_picture_url || undefined}
+                currentMetadata={editingProfilePicture.picture_metadata || undefined}
+                onSuccess={(publicUrl, metadata) => {
+                  // Update the user in the local state
+                  setUsers(users.map(u => 
+                    u.id === editingProfilePicture.id 
+                      ? { ...u, profile_picture_url: publicUrl, picture_metadata: metadata }
+                      : u
+                  ));
+                  setEditingProfilePicture(null);
+                }}
+                onError={(error) => {
+                  console.error('Error uploading profile picture:', error);
+                  alert(`Failed to upload profile picture: ${error.message}`);
+                }}
+              />
+            </div>
           </div>
         </div>
       )}
