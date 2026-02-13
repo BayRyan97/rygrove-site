@@ -152,6 +152,7 @@ In your Supabase project:
 1. Go to Storage
 2. Create a bucket named `receipts`
 3. Configure storage policies for authenticated users
+4. Receipt uploads are limited to 5MB and accept JPEG, PNG, HEIC, and HEIF
 
 ### 6. Deploy Edge Function
 
