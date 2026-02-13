@@ -146,7 +146,13 @@ export function Dashboard({ user }: DashboardProps) {
   };
 
   return (
-    <div className="min-h-screen">
+    <div
+      className={`min-h-screen ${
+        activeTab === 'admin'
+          ? 'bg-gradient-to-br from-white via-red-50 to-red-300'
+          : 'gradient-bg'
+      }`}
+    >
       {/* Header */}
       <div className="fixed top-0 left-0 right-0 bg-white shadow-lg z-50 rounded-b-xl">
         <div className="container mx-auto px-4">
@@ -315,7 +321,7 @@ export function Dashboard({ user }: DashboardProps) {
           <div
             className={`rounded-2xl shadow-xl p-6 card-hover ${
               activeTab === 'admin'
-                ? 'bg-gradient-to-br from-white to-red-50'
+                ? 'bg-gradient-to-br from-white via-red-50 to-red-300'
                 : 'bg-white'
             }`}
           >

@@ -31,20 +31,20 @@ function App() {
     );
   }
 
-  return (
-    <div className="gradient-bg">
-      {!user ? (
+  if (!user) {
+    return (
+      <div className="gradient-bg">
         <div className="container mx-auto px-4 py-8">
           <div className="flex flex-col items-center justify-center min-h-screen">
             <h1 className="text-3xl font-bold text-gray-800 mb-8">RYGROVE</h1>
             <AuthForm />
           </div>
         </div>
-      ) : (
-        <Dashboard user={user} />
-      )}
-    </div>
-  );
+      </div>
+    );
+  }
+
+  return <Dashboard user={user} />;
 }
 
 export default App
