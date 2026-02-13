@@ -312,7 +312,13 @@ export function Dashboard({ user }: DashboardProps) {
       {/* Main Content */}
       <div className="pt-16">
         <div className="container mx-auto px-4 py-8">
-          <div className="bg-white rounded-2xl shadow-xl p-6 card-hover">
+          <div
+            className={`rounded-2xl shadow-xl p-6 card-hover ${
+              activeTab === 'admin'
+                ? 'bg-gradient-to-br from-white to-red-50'
+                : 'bg-white'
+            }`}
+          >
             {activeTab === 'enter-activity' ? (
               <TimeEntriesPage />
             ) : activeTab === 'view-activity' ? (
