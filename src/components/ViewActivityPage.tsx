@@ -176,6 +176,10 @@ export function ViewActivityPage() {
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
   const [editValues, setEditValues] = useState<Partial<TimeEntry> | null>(null);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [selectedEntries, setSelectedEntries] = useState<TimeEntry[]>([]);
+  const chartRef = useRef<ChartJS | null>(null);
 
   const chartOptions = {
     responsive: true,
@@ -216,6 +220,7 @@ export function ViewActivityPage() {
     },
     plugins: {
       legend: {
+        display: true,
         position: 'top' as const,
       },
       title: {
@@ -265,7 +270,7 @@ export function ViewActivityPage() {
 
       if (!dateRange || dateRange.length === 0) return null;
 
-      const data: { [date: string]: { [user: string]: { hours: number; locations: string[] } } } = {};
+      const data: { [date: string]: { [user: string]: { hours: number; locations: string[]; entryIds: string[] } } } = {};
       dateRange.forEach(date => {
         try {
           data[format(date, 'yyyy-MM-dd')] = {};
@@ -284,10 +289,11 @@ export function ViewActivityPage() {
           }
 
           if (!data[entryDate][entry.full_name]) {
-            data[entryDate][entry.full_name] = { hours: 0, locations: [] };
+            data[entryDate][entry.full_name] = { hours: 0, locations: [], entryIds: [] };
           }
 
           data[entryDate][entry.full_name].hours += hours;
+          data[entryDate][entry.full_name].entryIds.push(entry.id);
           if (!data[entryDate][entry.full_name].locations.includes(entry.location)) {
             data[entryDate][entry.full_name].locations.push(entry.location);
           }
@@ -309,6 +315,7 @@ export function ViewActivityPage() {
           data: sortedDates.map(date => data[date][user]?.hours || 0),
           backgroundColor: colorMap.get(user) || generateUniqueColor(0),
           locationData: sortedDates.map(date => data[date][user]?.locations || []),
+          entryIdsByDate: sortedDates.map(date => data[date][user]?.entryIds || []),
         }))
       };
     } catch (error) {
@@ -803,6 +810,53 @@ export function ViewActivityPage() {
     }
   };
 
+  const selectedEntry = useMemo(() => {
+    if (!selectedEntryId) return null;
+    return entries.find(entry => entry.id === selectedEntryId) || null;
+  }, [entries, selectedEntryId]);
+
+  const closeEditModal = () => {
+    setIsEditModalOpen(false);
+    setSelectedEntryId(null);
+    setSelectedEntries([]);
+    setEditingEntryId(null);
+    setEditValues(null);
+  };
+
+  const handleChartClick = (elements: any[]) => {
+    if (!elements || elements.length === 0 || !chartData) return;
+    const { datasetIndex, index } = elements[0];
+    const dataset = chartData.datasets[datasetIndex] as any;
+    const entryIds: string[] = dataset?.entryIdsByDate?.[index] || [];
+    if (!entryIds.length) return;
+
+    const matches = entries.filter(entry => entryIds.includes(entry.id));
+    if (matches.length === 1) {
+      setSelectedEntryId(matches[0].id);
+      setSelectedEntries(matches);
+      setIsEditModalOpen(true);
+      return;
+    }
+
+    setSelectedEntryId(null);
+    setSelectedEntries(matches);
+    setIsEditModalOpen(true);
+  };
+
+  const openEditModalForEntries = (matches: TimeEntry[]) => {
+    if (!matches.length) return;
+    if (matches.length === 1) {
+      setSelectedEntryId(matches[0].id);
+      setSelectedEntries(matches);
+      setIsEditModalOpen(true);
+      return;
+    }
+
+    setSelectedEntryId(null);
+    setSelectedEntries(matches);
+    setIsEditModalOpen(true);
+  };
+
   const exportToCSV = () => {
     try {
       const headers = [
@@ -1160,7 +1214,30 @@ export function ViewActivityPage() {
 
               <div className="h-[400px]">
                 {chartType === 'bar' && chartData && (
-                  <Bar options={chartOptions} data={chartData} />
+                  <Bar
+                    ref={chartRef}
+                    options={chartOptions}
+                    data={chartData}
+                    onClick={(event, elements) => {
+                      const native = event.nativeEvent as MouseEvent;
+                      if (native.metaKey) {
+                        handleChartClick(elements);
+                      }
+                    }}
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      const native = event.nativeEvent;
+                      const elements = chartRef.current?.getElementsAtEventForMode(
+                        native,
+                        'nearest',
+                        { intersect: true },
+                        true
+                      );
+                      if (elements && elements.length > 0) {
+                        handleChartClick(elements);
+                      }
+                    }}
+                  />
                 )}
                 {chartType === 'pie' && pieChartData && (
                   <Pie options={pieChartOptions} data={pieChartData} />
@@ -1525,6 +1602,259 @@ export function ViewActivityPage() {
       {entries.length === 0 && !isLoading && (
         <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
           <p className="text-gray-500">No activities found for the selected criteria.</p>
+        </div>
+      )}
+
+      {isEditModalOpen && (selectedEntry || selectedEntries.length > 0) && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+              <div>
+                {selectedEntry ? (
+                  <>
+                    <h3 className="text-lg font-semibold text-gray-800">
+                      {selectedEntry.full_name} — {format(parseISO(selectedEntry.date), 'MMMM d, yyyy')}
+                    </h3>
+                    <p className="text-sm text-gray-500">{selectedEntry.location}</p>
+                  </>
+                ) : (
+                  <>
+                    <h3 className="text-lg font-semibold text-gray-800">Select an entry</h3>
+                    <p className="text-sm text-gray-500">Multiple entries match this bar segment</p>
+                  </>
+                )}
+              </div>
+              <button
+                onClick={closeEditModal}
+                className="text-gray-400 hover:text-gray-600"
+                aria-label="Close"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="p-6">
+              {selectedEntry && editingEntryId === selectedEntry.id && editValues ? (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div>
+                      <label className="text-xs text-gray-600">Date</label>
+                      <input
+                        type="date"
+                        value={editValues.date || ''}
+                        onChange={(e) => setEditValues(prev => ({ ...(prev || {}), date: e.target.value }))}
+                        className="w-full mt-1 p-2 border rounded"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-600">Start</label>
+                      <input
+                        type="time"
+                        value={editValues.start_time || ''}
+                        onChange={(e) => setEditValues(prev => ({ ...(prev || {}), start_time: e.target.value }))}
+                        className="w-full mt-1 p-2 border rounded"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-600">End</label>
+                      <input
+                        type="time"
+                        value={editValues.end_time || ''}
+                        onChange={(e) => setEditValues(prev => ({ ...(prev || {}), end_time: e.target.value }))}
+                        className="w-full mt-1 p-2 border rounded"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-xs text-gray-600">Location</label>
+                    <input
+                      type="text"
+                      value={editValues.location || ''}
+                      onChange={(e) => setEditValues(prev => ({ ...(prev || {}), location: e.target.value }))}
+                      className="w-full mt-1 p-2 border rounded"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs text-gray-600">Lunch Break (HH:MM)</label>
+                    <input
+                      type="text"
+                      value={editValues.lunch_break || ''}
+                      onChange={(e) => setEditValues(prev => ({ ...(prev || {}), lunch_break: e.target.value }))}
+                      className="w-full mt-1 p-2 border rounded"
+                      placeholder="00:30"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs text-gray-600 block mb-2">Work Type (required)</label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
+                      {[
+                        { key: 'Contract', label: 'Contract' },
+                        { key: 'Time and material', label: 'Time and material' },
+                        { key: 'Additional to the contract', label: 'Additional to the contract' },
+                        { key: 'Other', label: 'Other' }
+                      ].map((opt) => (
+                        <label key={opt.key} className="flex items-center space-x-2">
+                          <input
+                            type="radio"
+                            name={`work_type_${selectedEntry.id}`}
+                            value={opt.key}
+                            checked={editValues.work_type?.[0] === opt.key}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setEditValues(prev => ({
+                                  ...(prev || {}),
+                                  work_type: [opt.key],
+                                  work_type_other: opt.key !== 'Other' ? null : prev?.work_type_other
+                                }));
+                              }
+                            }}
+                            className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+                          />
+                          <span className="text-sm text-gray-700">{opt.label}</span>
+                        </label>
+                      ))}
+                    </div>
+
+                    {editValues.work_type?.[0] === 'Other' && (
+                      <div className="mt-2">
+                        <input
+                          type="text"
+                          value={editValues.work_type_other || ''}
+                          onChange={(e) =>
+                            setEditValues(prev => ({
+                              ...(prev || {}),
+                              work_type_other: e.target.value
+                            }))
+                          }
+                          className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                          placeholder="Describe other work type"
+                          required={editValues.work_type?.[0] === 'Other'}
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="text-xs text-gray-600">Notes</label>
+                    <textarea
+                      value={editValues.notes || ''}
+                      onChange={(e) => setEditValues(prev => ({ ...(prev || {}), notes: e.target.value }))}
+                      className="w-full mt-1 p-2 border rounded"
+                      rows={3}
+                    />
+                  </div>
+
+                  <div className="flex gap-2 justify-end">
+                    <button
+                      onClick={cancelEdit}
+                      className="px-3 py-2 bg-gray-100 rounded text-sm"
+                      type="button"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => saveEdit(selectedEntry.id)}
+                      disabled={isSavingEdit}
+                      className="px-3 py-2 bg-blue-600 text-white rounded text-sm"
+                      type="button"
+                    >
+                      {isSavingEdit ? 'Saving...' : 'Save'}
+                    </button>
+                  </div>
+                </div>
+              ) : selectedEntry ? (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-gray-700">
+                        {selectedEntry.start_time} - {selectedEntry.end_time}
+                      </p>
+                      {selectedEntry.lunch_break && (
+                        <p className="text-xs text-gray-500">
+                          Lunch Break: {selectedEntry.lunch_break}
+                        </p>
+                      )}
+                    </div>
+                    {isAdmin && (
+                      <button
+                        onClick={() => startEditing(selectedEntry)}
+                        className="px-3 py-2 bg-blue-600 text-white rounded text-sm"
+                        type="button"
+                      >
+                        Edit Entry
+                      </button>
+                    )}
+                  </div>
+
+                  {selectedEntry.notes && (
+                    <div>
+                      <p className="text-xs font-medium text-gray-700">Notes</p>
+                      <p className="text-sm text-gray-900">{selectedEntry.notes}</p>
+                    </div>
+                  )}
+
+                  {selectedEntry.expenses && selectedEntry.expenses.length > 0 && (
+                    <div>
+                      <p className="text-xs font-medium text-gray-700 mb-1">Expenses</p>
+                      <div className="space-y-2">
+                        {selectedEntry.expenses.map((expense, index) => (
+                          <div key={index} className="flex items-start justify-between bg-gray-50 p-2 rounded-lg">
+                            <div>
+                              <p className="text-xs text-gray-900">{expense.description}</p>
+                              {expense.receipt_url && (
+                                <a
+                                  href={expense.receipt_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-xs text-blue-600 hover:text-blue-800"
+                                >
+                                  View Receipt
+                                </a>
+                              )}
+                            </div>
+                            <p className="text-xs font-medium text-gray-900">
+                              ${expense.amount.toFixed(2)}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {selectedEntries.map(entry => (
+                    <div key={entry.id} className="border border-gray-200 rounded-lg p-4 flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-gray-900">
+                          {entry.full_name} — {format(parseISO(entry.date), 'MMM d, yyyy')}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {entry.start_time} - {entry.end_time} • {entry.location}
+                        </p>
+                      </div>
+                      {isAdmin && (
+                        <button
+                          onClick={() => {
+                            setSelectedEntryId(entry.id);
+                            setSelectedEntries([entry]);
+                            startEditing(entry);
+                          }}
+                          className="px-3 py-2 bg-blue-600 text-white rounded text-sm"
+                          type="button"
+                        >
+                          Edit
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>
