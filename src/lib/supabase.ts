@@ -94,7 +94,7 @@ export async function uploadProfilePicture(
     // Upload to avatars bucket
     const { error: uploadError } = await supabase.storage
       .from('avatars')
-      .upload(filePath, file, { upsert: false });
+      .upload(filePath, file, { upsert: false, contentType: file.type, cacheControl: '3600' });
 
     if (uploadError) throw uploadError;
 

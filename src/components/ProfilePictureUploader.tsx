@@ -252,7 +252,7 @@ export function ProfilePictureUploader({
               <img
                 src={preview}
                 alt="Preview"
-                className="object-cover"
+                className="object-cover w-full h-full block"
                 style={{
                   transform: `scale(${zoom}) translate(${offsetX}%, ${offsetY}%)`
                 }}

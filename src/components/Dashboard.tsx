@@ -201,18 +201,20 @@ export function Dashboard({ user }: DashboardProps) {
                     <div className="text-xs text-gray-500">{user.email}</div>
                   </div>
                   {profile?.profile_picture_url ? (
-                    <img
-                      src={`${profile.profile_picture_url}?t=${Date.now()}`}
-                      alt="Profile"
-                      className="h-8 w-8 rounded-full object-cover border border-gray-200 flex-shrink-0"
-                      style={
-                        profile.picture_metadata
-                          ? {
-                              transform: `scale(${profile.picture_metadata.zoom}) translate(${profile.picture_metadata.offsetX}%, ${profile.picture_metadata.offsetY}%)`
-                            }
-                          : undefined
-                      }
-                    />
+                    <div className="h-8 w-8 rounded-full overflow-hidden border border-gray-200 flex-shrink-0">
+                      <img
+                        src={`${profile.profile_picture_url}?t=${Date.now()}`}
+                        alt="Profile"
+                        className="w-full h-full object-cover block"
+                        style={
+                          profile.picture_metadata
+                            ? {
+                                transform: `scale(${profile.picture_metadata.zoom}) translate(${profile.picture_metadata.offsetX}%, ${profile.picture_metadata.offsetY}%)`
+                              }
+                            : undefined
+                        }
+                      />
+                    </div>
                   ) : (
                     <User className="h-5 w-5 text-gray-400" />
                   )}

@@ -921,18 +921,20 @@ function AdminPage() {
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center space-x-3">
                       {user.profile_picture_url ? (
-                        <img
-                          src={`${user.profile_picture_url}?t=${Date.now()}`}
-                          alt={user.full_name}
-                          className="h-8 w-8 rounded-full object-cover border border-gray-200"
-                          style={
-                            user.picture_metadata
-                              ? {
-                                  transform: `scale(${user.picture_metadata.zoom}) translate(${user.picture_metadata.offsetX}%, ${user.picture_metadata.offsetY}%)`
-                                }
-                              : undefined
-                          }
-                        />
+                        <div className="h-8 w-8 rounded-full overflow-hidden border border-gray-200 flex-shrink-0">
+                          <img
+                            src={`${user.profile_picture_url}?t=${Date.now()}`}
+                            alt={user.full_name}
+                            className="w-full h-full object-cover block"
+                            style={
+                              user.picture_metadata
+                                ? {
+                                    transform: `scale(${user.picture_metadata.zoom}) translate(${user.picture_metadata.offsetX}%, ${user.picture_metadata.offsetY}%)`
+                                  }
+                                : undefined
+                            }
+                          />
+                        </div>
                       ) : (
                         <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center">
                           <User className="h-5 w-5 text-gray-400" />
