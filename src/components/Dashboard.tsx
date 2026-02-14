@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Calendar, DollarSign, LogOut, Eye, Shield, Menu, X, ChevronDown, FileSpreadsheet, User, Calculator, FolderKanban } from 'lucide-react';
+import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 import { TimeEntriesPage } from './TimeEntriesPage';
@@ -10,6 +11,7 @@ import { ExpensePage } from './ExpensePage';
 import { EstimateWorksheetPage } from './EstimateWorksheetPage';
 import PlannerPage from './PlannerPage';
 import { ProfilePictureUploader } from './ProfilePictureUploader';
+import { ProtectedRoute } from './ProtectedRoute';
 
 interface DashboardProps {
   user: SupabaseUser;
@@ -34,7 +36,9 @@ interface MenuItem {
 }
 
 export function Dashboard({ user }: DashboardProps) {
-  const [activeTab, setActiveTab] = useState('view-activity');
+  const navigate = useNavigate();
+  const location = useLocation();
+  const activeTab = location.pathname.slice(1) || 'view-activity';
   const [profile, setProfile] = useState<Profile | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -92,19 +96,6 @@ export function Dashboard({ user }: DashboardProps) {
     return menuItems.find(item => item.id === activeTab)?.label || 'Dashboard';
   };
 
-  const fetchProfile = async () => {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('full_name, role, profile_picture_url, picture_metadata')
-      .eq('id', user.id)
-      .single();
-    
-    if (!error && data) {
-      setProfile(data);
-      setIsAdmin(data.role === 'admin');
-    }
-  };
-
   useEffect(() => {
     async function getProfile() {
       // Force fresh data from Supabase (no cache)
@@ -159,7 +150,7 @@ export function Dashboard({ user }: DashboardProps) {
           <div className="h-16 flex items-center justify-between">
             <div className="flex items-center">
               <button
-                onClick={() => setActiveTab('view-activity')}
+                onClick={() => navigate('/view-activity')}
                 className="text-2xl font-bold text-blue-600 tracking-tight hover:text-blue-700 transition-colors cursor-pointer"
               >
                 RY<span className="text-blue-500">GROVE</span>
@@ -181,7 +172,7 @@ export function Dashboard({ user }: DashboardProps) {
                         <button
                           key={item.id}
                           onClick={() => {
-                            setActiveTab(item.id);
+                            navigate('/' + item.id);
                             setIsDropdownOpen(false);
                           }}
                           className={`w-full flex items-center space-x-2 px-4 py-2 text-sm whitespace-nowrap ${
@@ -286,7 +277,7 @@ export function Dashboard({ user }: DashboardProps) {
                   <button
                     key={item.id}
                     onClick={() => {
-                      setActiveTab(item.id);
+                      navigate('/' + item.id);
                       setIsMenuOpen(false);
                     }}
                     className={`w-full flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors ${
@@ -325,21 +316,23 @@ export function Dashboard({ user }: DashboardProps) {
                 : 'bg-white'
             }`}
           >
-            {activeTab === 'enter-activity' ? (
-              <TimeEntriesPage />
-            ) : activeTab === 'view-activity' ? (
-              <ViewActivityPage />
-            ) : activeTab === 'planner' ? (
-              <PlannerPage />
-            ) : activeTab === 'estimate-worksheet' ? (
-              <EstimateWorksheetPage />
-            ) : activeTab === 'create-invoice' ? (
-              <CreateInvoicePage />
-            ) : activeTab === 'admin' ? (
-              <AdminPage />
-            ) : activeTab === 'expenses' ? (
-              <ExpensePage />
-            ) : null}
+            <Routes>
+              <Route path="/" element={<ViewActivityPage />} />
+              <Route path="/view-activity" element={<ViewActivityPage />} />
+              <Route path="/enter-activity" element={<TimeEntriesPage />} />
+              <Route path="/planner" element={<PlannerPage />} />
+              <Route path="/estimate-worksheet" element={<EstimateWorksheetPage />} />
+              <Route path="/create-invoice" element={<CreateInvoicePage />} />
+              <Route path="/expenses" element={<ExpensePage />} />
+              <Route 
+                path="/admin" 
+                element={
+                  <ProtectedRoute allowedRoles={['admin']}>
+                    <AdminPage />
+                  </ProtectedRoute>
+                } 
+              />
+            </Routes>
           </div>
         </div>
       </div>
