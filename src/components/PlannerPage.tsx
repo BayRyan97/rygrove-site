@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { format, parseISO, addDays, addWeeks, subWeeks, startOfWeek, endOfWeek, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isBefore } from 'date-fns';
+import { format, parseISO, addDays, addWeeks, subWeeks, startOfWeek, endOfWeek, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isBefore, isAfter, isValid } from 'date-fns';
 import { supabase } from '../lib/supabase';
 import { Plus, FolderKanban, AlertCircle, ChevronDown, ChevronRight as ChevronRightIcon, Trash2, X, StickyNote, Calendar as CalendarIcon } from 'lucide-react';
 
@@ -83,6 +83,14 @@ export default function PlannerPage() {
       // Use project dates with 1 week padding on each side
       const projectStart = parseISO(selectedProject.start_date);
       const projectEnd = parseISO(selectedProject.end_date);
+
+      if (!isValid(projectStart) || !isValid(projectEnd) || isAfter(projectStart, projectEnd)) {
+        const today = new Date();
+        return {
+          viewportStart: startOfMonth(today),
+          viewportEnd: endOfMonth(today)
+        };
+      }
       return {
         viewportStart: subWeeks(startOfWeek(projectStart), 1),
         viewportEnd: addWeeks(endOfWeek(projectEnd), 1)
@@ -1056,7 +1064,7 @@ export default function PlannerPage() {
                           <div
                             key={dayIdx}
                             className={`text-center text-xs font-medium transition-all duration-200 flex flex-col ${
-                              isToday ? 'bg-gradient-to-b from-blue-500 to-blue-600 text-white shadow-lg scale-105 rounded-t-lg mx-0.5' : 'text-gray-600'
+                              isToday ? 'bg-gradient-to-b from-blue-500 to-blue-600 text-white shadow-lg scale-105 rounded-t-lg mx-0.5' : 'text-gray-700'
                             }`}
                             style={{ width: '70px', flexShrink: 0 }}
                           >
@@ -1066,21 +1074,21 @@ export default function PlannerPage() {
                                 ? 'text-white font-bold' 
                                 : isFirstOfMonth 
                                 ? 'text-gray-800 font-bold' 
-                                : 'text-gray-400 font-medium'
+                                : 'text-gray-500 font-medium'
                             }`}>
                               {isFirstOfMonth ? `${monthName} ${year}` : monthName}
                             </div>
                             
                             {/* Day of week */}
                             <div className={`text-[10px] uppercase tracking-wider ${
-                              isToday ? 'font-bold text-white/90' : 'font-bold'
+                              isToday ? 'font-bold text-white/90' : 'font-bold text-gray-700'
                             }`}>
                               {format(day, 'EEE').substring(0, 3)}
                             </div>
                             
                             {/* Day number */}
                             <div className={`text-lg pb-1 ${
-                              isToday ? 'font-bold' : 'font-semibold'
+                              isToday ? 'font-bold text-white' : 'font-semibold text-gray-800'
                             }`}>
                               {format(day, 'd')}
                             </div>
