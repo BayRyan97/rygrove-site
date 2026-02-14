@@ -75,16 +75,30 @@ export default function PlannerPage() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [currentUser, setCurrentUser] = useState<string>('');
 
+  const normalizeDateInput = (value?: string | null) => {
+    if (!value) return '';
+    const trimmed = value.trim();
+    if (!trimmed) return '';
+    return trimmed.includes('T') ? trimmed.split('T')[0] : trimmed;
+  };
+
+  const parsePlannerDate = (value?: string | null) => {
+    const normalized = normalizeDateInput(value);
+    if (!normalized) return null;
+    const parsed = parseISO(`${normalized}T00:00:00`);
+    return isValid(parsed) ? parsed : null;
+  };
+
   // Calculate timeline from project dates with padding
   const { viewportStart, viewportEnd } = useMemo(() => {
     const selectedProject = projects.find(p => p.id === selectedProjectId);
     
     if (selectedProject?.start_date && selectedProject?.end_date) {
       // Use project dates with 1 week padding on each side
-      const projectStart = parseISO(selectedProject.start_date);
-      const projectEnd = parseISO(selectedProject.end_date);
+      const projectStart = parsePlannerDate(selectedProject.start_date);
+      const projectEnd = parsePlannerDate(selectedProject.end_date);
 
-      if (!isValid(projectStart) || !isValid(projectEnd) || isAfter(projectStart, projectEnd)) {
+      if (!projectStart || !projectEnd || isAfter(projectStart, projectEnd)) {
         const today = new Date();
         return {
           viewportStart: startOfMonth(today),
@@ -114,6 +128,7 @@ export default function PlannerPage() {
   const [showTaskDetailModal, setShowTaskDetailModal] = useState(false);
   const [selectedTask, setSelectedTask] = useState<PlannerTask | null>(null);
   const [editingProjectDates, setEditingProjectDates] = useState(false);
+  const [projectDateDraft, setProjectDateDraft] = useState({ start_date: '', end_date: '' });
   const [hoveredTaskId, setHoveredTaskId] = useState<string | null>(null);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
   const [showNoteModal, setShowNoteModal] = useState(false);
@@ -193,9 +208,14 @@ export default function PlannerPage() {
       return;
     }
 
-    setProjects(data || []);
-    if (data && data.length > 0 && !selectedProjectId) {
-      setSelectedProjectId(data[0].id);
+    const normalized = (data || []).map((project) => ({
+      ...project,
+      start_date: normalizeDateInput(project.start_date),
+      end_date: normalizeDateInput(project.end_date)
+    }));
+    setProjects(normalized);
+    if (normalized.length > 0 && !selectedProjectId) {
+      setSelectedProjectId(normalized[0].id);
     }
   };
 
@@ -239,7 +259,12 @@ export default function PlannerPage() {
       return;
     }
 
-    setTasks(data || []);
+    const normalized = (data || []).map((task) => ({
+      ...task,
+      start_date: normalizeDateInput(task.start_date),
+      end_date: normalizeDateInput(task.end_date)
+    }));
+    setTasks(normalized);
   };
 
   const fetchNotes = async () => {
@@ -680,8 +705,9 @@ export default function PlannerPage() {
   const todayPositionPx = todayIndex !== -1 ? todayIndex * 70 : null;
 
   const getTaskPosition = (task: PlannerTask) => {
-    const taskStart = parseISO(task.start_date);
-    const taskEnd = parseISO(task.end_date);
+    const taskStart = parsePlannerDate(task.start_date);
+    const taskEnd = parsePlannerDate(task.end_date);
+    if (!taskStart || !taskEnd) return null;
     
     const startIndex = viewportDays.findIndex(d => isSameDay(d, taskStart));
     const endIndex = viewportDays.findIndex(d => isSameDay(d, taskEnd));
@@ -710,7 +736,9 @@ export default function PlannerPage() {
 
   const isTaskOverdue = (task: PlannerTask) => {
     if (task.completed_date) return false;
-    return isBefore(parseISO(task.end_date), new Date());
+    const taskEnd = parsePlannerDate(task.end_date);
+    if (!taskEnd) return false;
+    return isBefore(taskEnd, new Date());
   };
 
   const groupedTasks = useMemo(() => {
@@ -775,7 +803,13 @@ export default function PlannerPage() {
                 <h3 className="text-xs font-semibold text-gray-700">Project Timeline</h3>
                 {isAdmin && !editingProjectDates && (
                   <button
-                    onClick={() => setEditingProjectDates(true)}
+                    onClick={() => {
+                      setProjectDateDraft({
+                        start_date: normalizeDateInput(selectedProject.start_date),
+                        end_date: normalizeDateInput(selectedProject.end_date)
+                      });
+                      setEditingProjectDates(true);
+                    }}
                     className="text-[10px] text-blue-600 hover:text-blue-800"
                   >
                     Edit
@@ -789,8 +823,8 @@ export default function PlannerPage() {
                     <label className="block text-[10px] font-medium text-gray-600 mb-0.5">Start Date</label>
                     <input
                       type="date"
-                      defaultValue={selectedProject.start_date || ''}
-                      onChange={(e) => selectedProject.start_date = e.target.value}
+                      value={projectDateDraft.start_date}
+                      onChange={(e) => setProjectDateDraft({ ...projectDateDraft, start_date: e.target.value })}
                       className="w-full px-2 py-1 border rounded text-xs focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
@@ -798,8 +832,8 @@ export default function PlannerPage() {
                     <label className="block text-[10px] font-medium text-gray-600 mb-0.5">End Date</label>
                     <input
                       type="date"
-                      defaultValue={selectedProject.end_date || ''}
-                      onChange={(e) => selectedProject.end_date = e.target.value}
+                      value={projectDateDraft.end_date}
+                      onChange={(e) => setProjectDateDraft({ ...projectDateDraft, end_date: e.target.value })}
                       className="w-full px-2 py-1 border rounded text-xs focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
@@ -807,8 +841,8 @@ export default function PlannerPage() {
                     <button
                       onClick={() => updateProjectDates(
                         selectedProject.id,
-                        selectedProject.start_date || null,
-                        selectedProject.end_date || null
+                        projectDateDraft.start_date || null,
+                        projectDateDraft.end_date || null
                       )}
                       className="flex-1 px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-xs"
                     >
@@ -828,13 +862,13 @@ export default function PlannerPage() {
                     <div>
                       <span className="text-[10px] text-gray-600">Start:</span>
                       <span className="ml-1 font-medium text-gray-900">
-                        {selectedProject.start_date ? format(parseISO(selectedProject.start_date), 'MMM d, yyyy') : 'Not set'}
+                        {parsePlannerDate(selectedProject.start_date) ? format(parsePlannerDate(selectedProject.start_date) as Date, 'MMM d, yyyy') : 'Not set'}
                       </span>
                     </div>
                     <div>
                       <span className="text-[10px] text-gray-600">End:</span>
                       <span className="ml-1 font-medium text-gray-900">
-                        {selectedProject.end_date ? format(parseISO(selectedProject.end_date), 'MMM d, yyyy') : 'Not set'}
+                        {parsePlannerDate(selectedProject.end_date) ? format(parsePlannerDate(selectedProject.end_date) as Date, 'MMM d, yyyy') : 'Not set'}
                       </span>
                     </div>
                   </div>
@@ -1204,7 +1238,9 @@ export default function PlannerPage() {
                                 <div className="font-semibold mb-1">{task.name}</div>
                                 {task.description && <div className="text-gray-200 text-xs mb-2">{task.description}</div>}
                                 <div className="text-gray-300 text-xs">
-                                  {format(parseISO(task.start_date), 'MMM d, yyyy')} → {format(parseISO(task.end_date), 'MMM d, yyyy')}
+                                  {parsePlannerDate(task.start_date) && parsePlannerDate(task.end_date)
+                                    ? `${format(parsePlannerDate(task.start_date) as Date, 'MMM d, yyyy')} → ${format(parsePlannerDate(task.end_date) as Date, 'MMM d, yyyy')}`
+                                    : 'Dates not set'}
                                 </div>
                               </div>
                             )}
@@ -1645,7 +1681,7 @@ export default function PlannerPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
                   <input
                     type="date"
-                    value={selectedTask.start_date}
+                    value={normalizeDateInput(selectedTask.start_date)}
                     onChange={(e) => setSelectedTask({ ...selectedTask, start_date: e.target.value })}
                     className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                     disabled={!isAdmin}
@@ -1656,7 +1692,7 @@ export default function PlannerPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">End Date</label>
                   <input
                     type="date"
-                    value={selectedTask.end_date}
+                    value={normalizeDateInput(selectedTask.end_date)}
                     onChange={(e) => setSelectedTask({ ...selectedTask, end_date: e.target.value })}
                     className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                     disabled={!isAdmin}
@@ -1669,7 +1705,9 @@ export default function PlannerPage() {
                 <div className="flex items-center gap-2">
                   {selectedTask.completed_date ? (
                     <div className="px-3 py-2 bg-green-100 text-green-800 rounded-lg font-medium">
-                      Completed on {format(parseISO(selectedTask.completed_date), 'MMM d, yyyy')}
+                      {parsePlannerDate(selectedTask.completed_date)
+                        ? `Completed on ${format(parsePlannerDate(selectedTask.completed_date) as Date, 'MMM d, yyyy')}`
+                        : 'Completed'}
                     </div>
                   ) : isTaskOverdue(selectedTask) ? (
                     <div className="px-3 py-2 bg-red-100 text-red-800 rounded-lg font-medium flex items-center gap-2">
