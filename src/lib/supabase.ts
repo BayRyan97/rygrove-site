@@ -140,13 +140,23 @@ export async function deleteProfilePicture(userId: string) {
 
     if (fetchError) throw fetchError;
 
-    // Delete from storage if picture exists
+    // Delete from storage if picture exists and matches storage URL
     if (profile?.profile_picture_url) {
-      const url = new URL(profile.profile_picture_url);
-      const pathParts = url.pathname.split('/');
-      const filePath = pathParts.slice(-2).join('/'); // Get user_id/filename
+      let filePath: string | null = null;
 
-      await supabase.storage.from('avatars').remove([filePath]);
+      try {
+        const url = new URL(profile.profile_picture_url);
+        const match = url.pathname.match(/\/storage\/v1\/object\/(?:public|sign)\/avatars\/(.+)$/);
+        if (match?.[1]) {
+          filePath = match[1];
+        }
+      } catch {
+        filePath = null;
+      }
+
+      if (filePath) {
+        await supabase.storage.from('avatars').remove([filePath]);
+      }
     }
 
     // Clear profile picture data

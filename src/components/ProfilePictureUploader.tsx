@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Upload, X, ZoomIn, ZoomOut } from 'lucide-react';
 import { uploadProfilePicture, deleteProfilePicture, PictureMetadata } from '../lib/supabase';
 import { supabase } from '../lib/supabase';
@@ -30,6 +30,15 @@ export function ProfilePictureUploader({
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
+  const isAdjustable = Boolean(file) || isEditing;
+
+  useEffect(() => {
+    if (file) return;
+    setPreview(currentPictureUrl || '');
+    setZoom(currentMetadata?.zoom ?? 1);
+    setOffsetX(currentMetadata?.offsetX ?? 0);
+    setOffsetY(currentMetadata?.offsetY ?? 0);
+  }, [currentPictureUrl, currentMetadata, file]);
 
   // Handle file selection
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -93,12 +102,13 @@ export function ProfilePictureUploader({
 
   // Handle image dragging for centering
   const handleMouseDown = (e: React.MouseEvent) => {
+    if (!isAdjustable) return;
     setIsDragging(true);
     setDragStart({ x: e.clientX, y: e.clientY });
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (!isDragging) return;
+    if (!isDragging || !isAdjustable) return;
 
     const deltaX = (e.clientX - dragStart.x) / 2;
     const deltaY = (e.clientY - dragStart.y) / 2;
@@ -116,6 +126,7 @@ export function ProfilePictureUploader({
 
   // Handle zoom
   const handleZoomChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!isAdjustable) return;
     setZoom(parseFloat(e.target.value));
   };
 
@@ -126,11 +137,13 @@ export function ProfilePictureUploader({
     setIsLoading(true);
     try {
       const metadata: PictureMetadata = { zoom, offsetX, offsetY };
-      await uploadProfilePicture(file, userId, metadata);
+      const { publicUrl } = await uploadProfilePicture(file, userId, metadata);
 
       setFile(null);
       setError(null);
-      onSuccess?.(preview, metadata);
+      setPreview(publicUrl);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      onSuccess?.(publicUrl, metadata);
     } catch (err) {
       const error = err instanceof Error ? err : new Error('Upload failed');
       setError(error.message);
@@ -177,7 +190,12 @@ export function ProfilePictureUploader({
       await deleteProfilePicture(userId);
       setPreview('');
       setFile(null);
+      setZoom(1);
+      setOffsetX(0);
+      setOffsetY(0);
+      setIsEditing(false);
       setError(null);
+      onSuccess?.('', { zoom: 1, offsetX: 0, offsetY: 0 });
     } catch (err) {
       const error = err instanceof Error ? err : new Error('Delete failed');
       setError(error.message);
@@ -225,7 +243,9 @@ export function ProfilePictureUploader({
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
             onMouseLeave={handleMouseUp}
-            className="relative bg-gray-100 rounded-full overflow-hidden border-2 border-gray-300 cursor-move"
+            className={`relative bg-gray-100 rounded-full overflow-hidden border-2 border-gray-300 ${
+              isAdjustable ? 'cursor-move' : 'cursor-default'
+            }`}
             style={{ height: '350px', width: '350px', margin: '0 auto', aspectRatio: '1' }}
           >
             <div className="absolute inset-0 flex items-center justify-center">
@@ -254,6 +274,7 @@ export function ProfilePictureUploader({
                 value={zoom}
                 onChange={handleZoomChange}
                 className="flex-1"
+                disabled={!isAdjustable}
               />
               <ZoomIn size={20} className="text-gray-600" />
               <span className="text-sm font-medium w-12">{zoom.toFixed(1)}x</span>
