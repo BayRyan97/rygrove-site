@@ -46,9 +46,9 @@ export function ProfilePictureUploader({
     if (!selectedFile) return;
 
     // Validate file type
-    const validTypes = ['image/jpeg', 'image/png', 'image/heic', 'image/heif'];
+    const validTypes = ['image/jpeg', 'image/png'];
     if (!validTypes.includes(selectedFile.type)) {
-      setError('Please upload a JPEG, PNG, HEIC, or HEIF image');
+      setError('Please upload a JPEG or PNG image');
       return;
     }
 
@@ -223,13 +223,13 @@ export function ProfilePictureUploader({
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/jpeg,image/png,image/heic,image/heif"
+            accept="image/jpeg,image/png"
             onChange={handleFileChange}
             className="hidden"
           />
           <Upload className="mx-auto mb-2 text-gray-400" size={32} />
           <p className="text-gray-700 font-medium">Click to upload or drag and drop</p>
-          <p className="text-sm text-gray-500">PNG, JPG, HEIC (max 5MB)</p>
+          <p className="text-sm text-gray-500">PNG, JPG (max 5MB)</p>
         </div>
       )}
 
@@ -366,7 +366,7 @@ export function ProfilePictureUploader({
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/jpeg,image/png,image/heic,image/heif"
+              accept="image/jpeg,image/png"
               onChange={handleFileChange}
               className="hidden"
             />
