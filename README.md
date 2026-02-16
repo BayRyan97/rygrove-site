@@ -9,7 +9,9 @@ A comprehensive full-stack web application for managing employee time entries, e
 - **Drag & Drop Scheduling**: Reschedule tasks by dragging them across the timeline
 - **Category Management**: Organize tasks into color-coded categories for visual distinction
 - **Task Tracking**: Create, track, and mark tasks as complete
+- **Bulk Task Operations**: Select multiple tasks to mark complete, move categories, or delete at once
 - **Post-it Notes Board**: Sticky-note style brainstorming and idea capture
+- **Note Comments**: Add threaded comments to notes for team collaboration
 - **Promote Notes to Tasks**: Convert notes into scheduled tasks with start/end dates
 - **Progress Monitoring**: Track task completion status and project progress
 - **Smart Timeline**: Automatically adjusts viewport based on project date ranges
@@ -17,25 +19,32 @@ A comprehensive full-stack web application for managing employee time entries, e
 ### ⏱️ Time Entry Management
 - **Quick Entry**: Submit time entries with date, location, and work hours
 - **Flexible Scheduling**: Support for full day (8 hours) and custom partial day entries
-- **Work Type Classification**: Tag entries with multiple work types (labor, travel, installation, support, etc.)
+- **Work Type Classification**: Select from Contract, Time and material, Additional to the contract, or Other (with custom description)
 - **Lunch Break Tracking**: Configurable lunch break durations (30 min, 45 min, 1 hour)
-- **Bulk Entry**: Add multiple time entries for different dates simultaneously
+- **Multiple Entry Forms**: Add multiple time entries for different dates in one submission
+- **Duplicate Entry**: Quickly copy an entry to the next day with one click
 - **8+ Hour Validation**: Automatic confirmation prompt for entries exceeding 8 hours
-- **Admin Proxy Entry**: Admins can enter time on behalf of any employee
+- **Admin/Supervisor Proxy Entry**: Admins and supervisors can enter time on behalf of any employee
 - **Delete Protection**: Proper RLS policies ensure only authorized deletions
 
 ### 💰 Expense Tracking
 - **Integrated Expenses**: Add multiple expenses per time entry as individual line items
+- **Standalone Expenses**: Submit expenses independent of time entries via Expense Worksheet
 - **Receipt Upload**: Upload and store receipt images (JPEG, PNG, HEIC, HEIF formats)
 - **Retailer Management**: Track expenses by retailer with autocomplete suggestions
 - **Expense Filtering**: Rich query options for viewing and analyzing all expenses
 - **Category Tracking**: Organize expenses by type and associate with projects
+- **Invoice Integration**: Standalone expenses automatically included in location invoices
 - **Bulk Viewing**: Comprehensive expense management across all employees
 
 ### 👥 Admin Dashboard & Management
-- **User Management**: Create and manage employee accounts with role assignment
-- **Role-Based Access**: Admin and employee roles with granular permissions enforced via RLS
+- **User Management**: Create and manage employee accounts with role assignment (admin/supervisor/employee)
+- **Role-Based Access**: Three-tier role system with granular permissions enforced via RLS
+- **Profile Picture Management**: Upload and customize profile pictures for any user with zoom/pan controls
+- **Hourly Rate Management**: Set and track hourly rates for each employee
+- **Labor Cost Calculation**: Automatic calculation of labor costs based on hours × rate
 - **Time Entry Oversight**: View, edit, and delete time entries for all employees
+- **Inline Editing**: Edit time entries directly from activity view without navigating to Admin Dashboard
 - **Password Reset**: Admin password reset flow via Supabase Edge Function
 - **Advanced Filtering**: Multi-criteria filtering by date range, employee, and location
 - **CSV/XLSX Export**: Export time entry and expense data for external analysis
@@ -45,14 +54,30 @@ A comprehensive full-stack web application for managing employee time entries, e
 ### 📄 Invoice & Estimate Generation
 - **Professional Invoices**: Generate invoices with line items, totals, and tax calculations
 - **Estimate Worksheets**: Create detailed project estimates with labor rates and material costs
+- **Estimate Versioning**: Automatic version numbering (v1, v2, v3) when saving estimate revisions
+- **Version Management**: Expand/collapse to view all versions of an estimate
+- **Duplicate Estimates**: Create new versions from existing estimates
 - **PDF Export**: Generate downloadable PDF versions of invoices and estimates
 - **Activity Tracking**: View comprehensive logs of all invoices and estimates created
 - **Client Management**: Track client information and invoice history
 
-### 📈 Dashboard & Analytics
+### � Profile Pictures
+- **Upload & Customize**: Drag and drop or select profile pictures (JPEG, PNG formats)
+- **Zoom & Position**: Interactive zoom and pan controls for perfect framing
+- **Real-time Preview**: See changes before saving with live preview
+- **Admin Management**: Admins can upload/edit pictures for any user
+- **Secure Storage**: Images stored in Supabase storage bucket with proper access controls
+- **Dashboard Display**: Profile pictures appear in navigation header and user lists
+
+### �📈 Dashboard & Analytics
 - **Real-time Statistics**: Widgets showing hours worked, expenses, and activity summaries
 - **Visual Analytics**: Interactive Chart.js-powered charts for time and expense trends
+- **Stacked Bar Chart**: Daily hours broken down by employee with unique color coding
+- **Pie Chart**: Hours distribution across job locations with percentages
+- **Interactive Tooltips**: Hover to see location details and exact hours
+- **Chart Toggle**: Switch between bar and pie visualizations
 - **Date Range Filtering**: Analyze data across custom date ranges
+- **Quick Date Ranges**: Preset filters for week, month, quarter, 6 months, year, or custom range
 - **Performance Insights**: Track individual and team performance metrics
 - **Employee Insights**: Detailed breakdown of work patterns and expense distributions
 
@@ -146,13 +171,16 @@ Apply all migrations to your Supabase database:
 supabase db push
 ```
 
-### 5. Create Storage Bucket
+### 5. Create Storage Buckets
 
 In your Supabase project:
 1. Go to Storage
-2. Create a bucket named `receipts`
-3. Configure storage policies for authenticated users
-4. Receipt uploads are limited to 5MB and accept JPEG, PNG, HEIC, and HEIF
+2. Create two buckets:
+   - `receipts` - For expense receipt uploads
+   - `profile-pictures` - For user profile pictures
+3. Configure storage policies for authenticated users on both buckets
+4. Receipt uploads limited to 5MB (JPEG, PNG, HEIC, HEIF formats)
+5. Profile picture uploads limited to 5MB (JPEG, PNG formats)
 
 ### 6. Deploy Edge Function
 
@@ -209,8 +237,10 @@ npm run lint
 ### Core Tables
 
 **profiles**
-- User profiles with roles (admin/employee)
-- Email, authentication metadata
+- User profiles with three-tier role system (admin/supervisor/employee)
+- Email, full name, and authentication metadata
+- Hourly rate for labor cost calculation
+- Profile picture URL and positioning metadata (zoom, offsetX, offsetY)
 - Created automatically on signup via trigger
 
 **time_entries**
@@ -262,6 +292,12 @@ npm run lint
 - Created and updated timestamps
 - Creator tracking for audit trails
 
+**planner_note_comments**
+- Comments on planner notes for team collaboration
+- Links to planner_notes via note_id
+- Tracks comment author and timestamps
+- Supports threaded discussions on project notes
+
 ### Key Database Features
 - **Row Level Security (RLS)**: All tables protected with Postgres RLS policies
 - **Foreign Keys**: Proper relationships with CASCADE deletes where appropriate
@@ -279,8 +315,24 @@ npm run lint
 - ✅ Create invoices
 - ✅ Create estimate worksheets
 - ✅ Access project planner
+- ✅ Upload and customize own profile picture
 - ❌ Cannot view other employees' data
 - ❌ Cannot manage users
+
+### Supervisor Role
+- ✅ Submit time entries on behalf of any employee
+- ✅ View activity for all employees
+- ✅ Add expenses on behalf of employees
+- ✅ Access all non-admin features (planner, invoices, estimates)
+- ✅ View activity dashboard with charts
+- ✅ Upload and customize own profile picture
+- ❌ Cannot access Admin Dashboard
+- ❌ Cannot create/manage users
+- ❌ Cannot reset passwords
+- ❌ Cannot export CSV/XLSX data
+- ❌ Cannot delete time entries
+- ❌ Cannot change user roles or hourly rates
+- ❌ Cannot upload profile pictures for other users
 
 ### Admin Role
 All employee permissions plus:
@@ -303,7 +355,7 @@ All employee permissions plus:
 2. Click **Add Time Entry**
 3. Select the date for the time entry
 4. Enter location where work was performed
-5. Choose work type(s) from the list (e.g., Labor, Travel, Support)
+5. Select work type: Contract, Time and material, Additional to the contract, or Other (with custom description)
 6. Select entry type:
    - **Full Day**: Automatically sets 8 hours
    - **Partial Day**: Enter specific hours worked
@@ -438,8 +490,10 @@ All employee permissions plus:
 - **Row Level Security (RLS)**: All database tables protected with Postgres RLS policies
 - **Authenticated Access**: All operations require valid Supabase session
 - **Admin-Only Operations**: Protected at database level with RLS policies
+- **Supervisor Restrictions**: Database-level enforcement prevents admin actions by supervisors
 - **Service Role Protection**: Admin operations use Edge Functions with service role (never exposed to client)
 - **Receipt Storage**: Uploads scoped to authenticated users with bucket policies
+- **Profile Picture Storage**: Separate bucket with authenticated-user policies and metadata security
 - **Secure Password Reset**: One-time temporary password generation via Edge Function
 - **PKCE Auth Flow**: Enhanced security with proof key for code exchange
 - **Delete Policies**: Proper RLS ensures only authorized users can delete data
@@ -504,6 +558,26 @@ All employee permissions plus:
 - ✓ Ensure Node.js version is 18+: `node --version`
 - ✓ Check for port 5173 conflicts: `lsof -i :5173`
 - ✓ Check ESLint errors: `npm run lint`
+
+### Profile Picture Upload Fails
+- ✓ Verify `profile-pictures` bucket exists in Supabase Storage
+- ✓ Check storage policies allow authenticated uploads
+- ✓ Ensure file is under 5MB and is JPEG or PNG format
+- ✓ Check browser console for CORS errors or network issues
+- ✓ Verify user has authenticated session
+
+### Charts Not Displaying in Activity Dashboard
+- ✓ Ensure Chart.js is properly loaded (check browser console)
+- ✓ Verify date range contains time entries
+- ✓ Clear browser cache and reload the page
+- ✓ Check that time entries have valid dates
+- ✓ Test with different date range presets
+
+### Supervisor Cannot Access Admin Features
+- ✓ This is by design - supervisors cannot access Admin Dashboard
+- ✓ Only admins can manage users, export data, and delete entries
+- ✓ Upgrade user role to 'admin' if full access is needed
+- ✓ Supervisors can enter time for others and view activity, but cannot perform admin operations
 
 ## 📊 Recent Updates & Fixes
 
