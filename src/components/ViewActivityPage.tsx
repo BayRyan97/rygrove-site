@@ -181,6 +181,7 @@ export function ViewActivityPage() {
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedEntries, setSelectedEntries] = useState<TimeEntry[]>([]);
+  const [isExpensesModalOpen, setIsExpensesModalOpen] = useState(false);
   const chartRef = useRef<ChartJS | null>(null);
 
   const chartOptions = {
@@ -595,15 +596,6 @@ export function ViewActivityPage() {
           setIsAdmin(profile?.role === 'admin');
           setIsSupervisor(profile?.role === 'supervisor');
         }
-
-        const { data: locationData, error: locationError } = await supabase
-          .from('time_entries')
-          .select('location')
-          .not('location', 'is', null);
-
-        if (locationError) throw locationError;
-        const uniqueLocations = [...new Set(locationData.map(entry => entry.location))].sort();
-        setLocations(uniqueLocations);
       } catch (error) {
         console.error('Error fetching data:', error);
       }
@@ -612,9 +604,9 @@ export function ViewActivityPage() {
     fetchData();
   }, []);
 
-  // Fetch unique names based on current date range
+  // Fetch unique names and locations based on current date range
   useEffect(() => {
-    async function fetchNamesInDateRange() {
+    async function fetchNamesAndLocationsInDateRange() {
       if (!startDate || !endDate) return;
 
       try {
@@ -628,12 +620,23 @@ export function ViewActivityPage() {
         if (namesError) throw namesError;
         const uniqueFullNames = Array.from(new Set(namesData.map(entry => entry.full_name))).sort();
         setUniqueNames(uniqueFullNames);
+
+        const { data: locationData, error: locationError } = await supabase
+          .from('time_entries')
+          .select('location')
+          .gte('date', startDate)
+          .lte('date', endDate)
+          .not('location', 'is', null);
+
+        if (locationError) throw locationError;
+        const uniqueLocations = [...new Set(locationData.map(entry => entry.location))].sort();
+        setLocations(uniqueLocations);
       } catch (error) {
-        console.error('Error fetching names:', error);
+        console.error('Error fetching names and locations:', error);
       }
     }
 
-    fetchNamesInDateRange();
+    fetchNamesAndLocationsInDateRange();
   }, [startDate, endDate]);
 
   const fetchEntries = async () => {
@@ -992,7 +995,7 @@ export function ViewActivityPage() {
                     fetchEntries();
                   }
                 }}
-                className="w-full pl-10 pr-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 appearance-none"
+                className="w-full pl-10 pr-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 appearance-none bg-white text-gray-900"
               >
                 <option value="week">Last Week</option>
                 <option value="month">Last Month</option>
@@ -1250,12 +1253,16 @@ export function ViewActivityPage() {
               </div>
             )}
             {summary.totalExpenses > 0 && (
-              <div className="bg-white rounded-lg shadow-sm p-4 border border-gray-200 flex flex-col items-center justify-center text-center w-full">
+              <button
+                onClick={() => setIsExpensesModalOpen(true)}
+                className="bg-white rounded-lg shadow-sm p-4 border border-gray-200 flex flex-col items-center justify-center text-center w-full hover:bg-gray-50 transition-colors cursor-pointer"
+              >
                 <h3 className="text-sm font-medium text-gray-500 mb-1">Total Expenses</h3>
                 <p className="text-2xl font-semibold text-gray-900">
                   {formatCurrency(summary.totalExpenses)}
                 </p>
-              </div>
+                <p className="text-xs text-blue-600 mt-1">Click to view receipts</p>
+              </button>
             )}
             <div className="bg-white rounded-lg shadow-sm p-4 border border-gray-200 flex flex-col items-center justify-center text-center w-full">
               <h3 className="text-sm font-medium text-gray-500 mb-1">Unique Locations</h3>
@@ -1931,6 +1938,78 @@ export function ViewActivityPage() {
                       )}
                     </div>
                   ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isExpensesModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-800">All Expense Receipts</h3>
+                <p className="text-sm text-gray-500">
+                  {entries.reduce((count, entry) => count + (entry.expenses?.length || 0), 0)} total expenses
+                </p>
+              </div>
+              <button
+                onClick={() => setIsExpensesModalOpen(false)}
+                className="text-gray-400 hover:text-gray-600"
+                aria-label="Close"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="p-6">
+              <div className="space-y-4">
+                {entries.map(entry => {
+                  if (!entry.expenses || entry.expenses.length === 0) return null;
+                  
+                  return (
+                    <div key={entry.id} className="border border-gray-200 rounded-lg p-4">
+                      <div className="mb-3 pb-3 border-b border-gray-200">
+                        <p className="text-sm font-semibold text-gray-900">
+                          {entry.full_name} — {format(parseISO(entry.date), 'MMM d, yyyy')}
+                        </p>
+                        <p className="text-xs text-gray-500">{entry.location}</p>
+                      </div>
+                      
+                      <div className="space-y-2">
+                        {entry.expenses.map((expense, index) => (
+                          <div key={index} className="flex items-start justify-between bg-gray-50 p-3 rounded-lg">
+                            <div className="flex-1">
+                              <p className="text-sm font-medium text-gray-900">{expense.description}</p>
+                              {expense.receipt_url ? (
+                                <a
+                                  href={expense.receipt_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-sm text-blue-600 hover:text-blue-800 hover:underline inline-flex items-center gap-1 mt-1"
+                                >
+                                  View Receipt →
+                                </a>
+                              ) : (
+                                <p className="text-xs text-gray-400 mt-1">No receipt attached</p>
+                              )}
+                            </div>
+                            <p className="text-sm font-semibold text-gray-900 ml-4">
+                              {formatCurrency(expense.amount)}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {entries.every(entry => !entry.expenses || entry.expenses.length === 0) && (
+                <div className="text-center py-12">
+                  <p className="text-gray-500">No expenses found in the selected time period.</p>
                 </div>
               )}
             </div>
