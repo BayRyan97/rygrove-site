@@ -160,15 +160,17 @@ export function ViewActivityPage() {
   const [endDate, setEndDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [entries, setEntries] = useState<TimeEntry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [personName, setPersonName] = useState('');
+  const [selectedPersons, setSelectedPersons] = useState<string[]>([]);
   const [location, setLocation] = useState('');
   const [uniqueNames, setUniqueNames] = useState<string[]>([]);
   const [locations, setLocations] = useState<string[]>([]);
   const [showLocationDropdown, setShowLocationDropdown] = useState(false);
   const [showLocationHighlight, setShowLocationHighlight] = useState(0);
+  const [showPersonDropdown, setShowPersonDropdown] = useState(false);
   const [expandedPersons, setExpandedPersons] = useState<Set<string>>(new Set());
   const [expandedLocations, setExpandedLocations] = useState<Set<string>>(new Set());
   const locationDropdownRef = useRef<HTMLDivElement>(null);
+  const personDropdownRef = useRef<HTMLDivElement>(null);
   const [chartType, setChartType] = useState<'bar' | 'pie'>('bar');
   const [isAdmin, setIsAdmin] = useState(false);
   const [isSupervisor, setIsSupervisor] = useState(false);
@@ -565,6 +567,19 @@ export function ViewActivityPage() {
   };
 
   useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (locationDropdownRef.current && !locationDropdownRef.current.contains(event.target as Node)) {
+        setShowLocationDropdown(false);
+      }
+      if (personDropdownRef.current && !personDropdownRef.current.contains(event.target as Node)) {
+        setShowPersonDropdown(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  useEffect(() => {
     async function fetchData() {
       try {
         // Check if user is admin or supervisor
@@ -581,16 +596,6 @@ export function ViewActivityPage() {
           setIsSupervisor(profile?.role === 'supervisor');
         }
 
-        // Fetch unique names from time_entries
-        const { data: namesData, error: namesError } = await supabase
-          .from('time_entries')
-          .select('full_name')
-          .order('full_name');
-
-        if (namesError) throw namesError;
-        const uniqueFullNames = Array.from(new Set(namesData.map(entry => entry.full_name))).sort();
-        setUniqueNames(uniqueFullNames);
-
         const { data: locationData, error: locationError } = await supabase
           .from('time_entries')
           .select('location')
@@ -606,6 +611,30 @@ export function ViewActivityPage() {
 
     fetchData();
   }, []);
+
+  // Fetch unique names based on current date range
+  useEffect(() => {
+    async function fetchNamesInDateRange() {
+      if (!startDate || !endDate) return;
+
+      try {
+        const { data: namesData, error: namesError } = await supabase
+          .from('time_entries')
+          .select('full_name')
+          .gte('date', startDate)
+          .lte('date', endDate)
+          .order('full_name');
+
+        if (namesError) throw namesError;
+        const uniqueFullNames = Array.from(new Set(namesData.map(entry => entry.full_name))).sort();
+        setUniqueNames(uniqueFullNames);
+      } catch (error) {
+        console.error('Error fetching names:', error);
+      }
+    }
+
+    fetchNamesInDateRange();
+  }, [startDate, endDate]);
 
   const fetchEntries = async () => {
     if (!startDate || !endDate) return;
@@ -675,8 +704,8 @@ export function ViewActivityPage() {
       if (location) {
         query = query.eq('location', location);
       }
-      if (personName) {
-        query = query.eq('full_name', personName);
+      if (selectedPersons.length > 0) {
+        query = query.in('full_name', selectedPersons);
       }
 
       // Filter by user_id for regular employees (not admins or supervisors)
@@ -939,7 +968,7 @@ export function ViewActivityPage() {
 
   const exportToPDF = () => {
     try {
-      generateActivityPDF(entries, summary, startDate, endDate, personName, location, isSupervisor);
+      generateActivityPDF(entries, summary, startDate, endDate, selectedPersons.join(', ') || 'All Users', location, isSupervisor);
     } catch (error) {
       console.error('Error exporting to PDF:', error);
       alert('Failed to export data to PDF. Please try again.');
@@ -1016,26 +1045,77 @@ export function ViewActivityPage() {
             </>
           )}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Person</label>
-            <div className="relative">
-              <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-              <select
-                value={personName}
-                onChange={(e) => setPersonName(e.target.value)}
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Person {selectedPersons.length > 0 && (
+                <span className="text-xs text-blue-600">({selectedPersons.length} selected)</span>
+              )}
+            </label>
+            <div className="relative" ref={personDropdownRef}>
+              <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 z-10" size={20} />
+              <button
+                type="button"
+                onClick={() => setShowPersonDropdown(!showPersonDropdown)}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
+                  if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
-                    fetchEntries();
+                    setShowPersonDropdown(!showPersonDropdown);
                   }
                 }}
-                className="w-full pl-10 pr-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 appearance-none"
+                className="w-full pl-10 pr-10 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 text-left bg-white"
               >
-                <option value="">All Users</option>
-                {uniqueNames.map(name => (
-                  <option key={name} value={name}>{name}</option>
-                ))}
-              </select>
-              <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+                {selectedPersons.length === 0 ? (
+                  <span className="text-gray-500">All Users</span>
+                ) : selectedPersons.length === 1 ? (
+                  <span className="text-gray-900">{selectedPersons[0]}</span>
+                ) : (
+                  <span className="text-gray-900">{selectedPersons.length} users selected</span>
+                )}
+              </button>
+              <ChevronDown
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 cursor-pointer pointer-events-none"
+                size={20}
+              />
+              {showPersonDropdown && (
+                <div className="absolute z-10 w-full mt-1 bg-white rounded-lg shadow-lg border border-gray-200 max-h-60 overflow-y-auto">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedPersons([]);
+                      setShowPersonDropdown(false);
+                    }}
+                    className="w-full px-4 py-2 text-left hover:bg-gray-50 text-gray-500 text-sm border-b border-gray-200"
+                  >
+                    Clear selection (All Users)
+                  </button>
+                  <div className="py-1">
+                    {uniqueNames.map(name => {
+                      const isSelected = selectedPersons.includes(name);
+                      return (
+                        <label
+                          key={name}
+                          className="flex items-center px-4 py-2 hover:bg-gray-50 cursor-pointer text-sm"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedPersons(prev => [...prev, name]);
+                              } else {
+                                setSelectedPersons(prev => prev.filter(p => p !== name));
+                              }
+                            }}
+                            className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded mr-3"
+                          />
+                          <span className={isSelected ? 'font-medium text-gray-900' : 'text-gray-700'}>
+                            {name}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
           <div>
@@ -1136,7 +1216,7 @@ export function ViewActivityPage() {
           <button
             onClick={() => {
               setLocation('');
-              setPersonName('');
+              setSelectedPersons([]);
               fetchEntries();
             }}
             disabled={isLoading}
