@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Calendar, DollarSign, LogOut, Eye, Shield, Menu, X, ChevronDown, FileSpreadsheet, Calculator, FolderKanban } from 'lucide-react';
+import { Calendar, DollarSign, LogOut, Eye, Shield, Menu, X, ChevronDown, FileSpreadsheet, Calculator, FolderKanban, Home } from 'lucide-react';
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
@@ -13,6 +13,7 @@ import PlannerPage from './PlannerPage';
 import { ProfilePictureUploader } from './ProfilePictureUploader';
 import { ProfileAvatar } from './ProfileAvatar';
 import { ProtectedRoute } from './ProtectedRoute';
+import { LandingPage } from './LandingPage';
 
 interface DashboardProps {
   user: SupabaseUser;
@@ -78,6 +79,12 @@ export function Dashboard({ user }: DashboardProps) {
       id: 'expenses',
       label: 'Expense Management',
       icon: DollarSign,
+      show: true
+    },
+    {
+      id: 'landing',
+      label: 'Landing Page',
+      icon: Home,
       show: true
     },
     {
@@ -310,6 +317,7 @@ export function Dashboard({ user }: DashboardProps) {
             }`}
           >
             <Routes>
+              <Route path="/landing" element={<LandingPage isAuthenticated={true} />} />
               <Route path="/" element={<ViewActivityPage />} />
               <Route path="/view-activity" element={<ViewActivityPage />} />
               <Route path="/enter-activity" element={<TimeEntriesPage />} />
