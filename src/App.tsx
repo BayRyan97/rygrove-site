@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { AuthForm } from './components/AuthForm';
+import { LandingPage } from './components/LandingPage';
 import { supabase } from './lib/supabase';
 import { Dashboard } from './components/Dashboard';
 import type { User } from '@supabase/supabase-js';
@@ -33,16 +33,7 @@ function App() {
   }
 
   if (!user) {
-    return (
-      <div className="gradient-bg">
-        <div className="container mx-auto px-4 py-8">
-          <div className="flex flex-col items-center justify-center min-h-screen">
-            <h1 className="text-3xl font-bold text-gray-800 mb-8">RYGROVE</h1>
-            <AuthForm />
-          </div>
-        </div>
-      </div>
-    );
+    return <LandingPage />;
   }
 
   return (
