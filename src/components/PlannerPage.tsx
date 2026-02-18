@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { format, parseISO, addDays, addWeeks, subWeeks, startOfWeek, endOfWeek, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isBefore, isAfter, isValid } from 'date-fns';
 import { supabase } from '../lib/supabase';
+import { parsePlannerDate as utilParsePlannerDate, normalizeDateInput as utilNormalizeDateInput, isSameDayCompat, createMemoizedDateParser } from '../lib/dateUtils';
 import { Plus, FolderKanban, AlertCircle, ChevronDown, ChevronRight as ChevronRightIcon, Trash2, X, StickyNote, Calendar as CalendarIcon } from 'lucide-react';
 
 interface PlannerProject {
@@ -75,18 +76,12 @@ export default function PlannerPage() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [currentUser, setCurrentUser] = useState<string>('');
 
-  const normalizeDateInput = (value?: string | null) => {
-    if (!value) return '';
-    const trimmed = value.trim();
-    if (!trimmed) return '';
-    return trimmed.includes('T') ? trimmed.split('T')[0] : trimmed;
-  };
-
-  const parsePlannerDate = (value?: string | null) => {
-    const normalized = normalizeDateInput(value);
-    if (!normalized) return null;
-    const parsed = parseISO(`${normalized}T00:00:00`);
-    return isValid(parsed) ? parsed : null;
+  // Use memoized date parser to avoid re-parsing same date strings
+  const memoizedDateParser = useMemo(() => createMemoizedDateParser(), []);
+  
+  // Wrapper function for convenience that uses the memoized parser
+  const parsePlannerDate = (value?: string | null): Date | null => {
+    return memoizedDateParser(value);
   };
 
   // Calculate timeline from project dates with padding
@@ -210,8 +205,8 @@ export default function PlannerPage() {
 
     const normalized = (data || []).map((project) => ({
       ...project,
-      start_date: normalizeDateInput(project.start_date),
-      end_date: normalizeDateInput(project.end_date)
+      start_date: utilNormalizeDateInput(project.start_date),
+      end_date: utilNormalizeDateInput(project.end_date)
     }));
     setProjects(normalized);
     if (normalized.length > 0 && !selectedProjectId) {
@@ -261,8 +256,8 @@ export default function PlannerPage() {
 
     const normalized = (data || []).map((task) => ({
       ...task,
-      start_date: normalizeDateInput(task.start_date),
-      end_date: normalizeDateInput(task.end_date)
+      start_date: utilNormalizeDateInput(task.start_date),
+      end_date: utilNormalizeDateInput(task.end_date)
     }));
     setTasks(normalized);
   };
@@ -700,8 +695,8 @@ export default function PlannerPage() {
   // Generate viewport days
   const viewportDays = eachDayOfInterval({ start: viewportStart, end: viewportEnd });
 
-  // Calculate today's position for indicator line
-  const todayIndex = viewportDays.findIndex(d => isSameDay(d, new Date()));
+  // Calculate today's position for indicator line (use Safari-compatible comparison)
+  const todayIndex = viewportDays.findIndex(d => isSameDayCompat(d, new Date()));
   const todayPositionPx = todayIndex !== -1 ? todayIndex * 70 : null;
 
   const getTaskPosition = (task: PlannerTask) => {
@@ -709,8 +704,8 @@ export default function PlannerPage() {
     const taskEnd = parsePlannerDate(task.end_date);
     if (!taskStart || !taskEnd) return null;
     
-    const startIndex = viewportDays.findIndex(d => isSameDay(d, taskStart));
-    const endIndex = viewportDays.findIndex(d => isSameDay(d, taskEnd));
+    const startIndex = viewportDays.findIndex(d => isSameDayCompat(d, taskStart));
+    const endIndex = viewportDays.findIndex(d => isSameDayCompat(d, taskEnd));
 
     if (startIndex === -1 || endIndex === -1) {
       // Task is partially or fully outside viewport
@@ -805,8 +800,8 @@ export default function PlannerPage() {
                   <button
                     onClick={() => {
                       setProjectDateDraft({
-                        start_date: normalizeDateInput(selectedProject.start_date),
-                        end_date: normalizeDateInput(selectedProject.end_date)
+                        start_date: utilNormalizeDateInput(selectedProject.start_date),
+                        end_date: utilNormalizeDateInput(selectedProject.end_date)
                       });
                       setEditingProjectDates(true);
                     }}
@@ -1089,7 +1084,7 @@ export default function PlannerPage() {
                     {/* Day row with month labels */}
                     <div className="flex items-center border-b border-gray-200 h-full">
                       {viewportDays.map((day, dayIdx) => {
-                        const isToday = isSameDay(day, new Date());
+                        const isToday = isSameDayCompat(day, new Date());
                         const isFirstOfMonth = format(day, 'd') === '1';
                         const monthName = format(day, 'MMM');
                         const year = format(day, 'yyyy');
@@ -1681,7 +1676,7 @@ export default function PlannerPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
                   <input
                     type="date"
-                    value={normalizeDateInput(selectedTask.start_date)}
+                    value={utilNormalizeDateInput(selectedTask.start_date)}
                     onChange={(e) => setSelectedTask({ ...selectedTask, start_date: e.target.value })}
                     className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                     disabled={!isAdmin}
@@ -1692,7 +1687,7 @@ export default function PlannerPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">End Date</label>
                   <input
                     type="date"
-                    value={normalizeDateInput(selectedTask.end_date)}
+                    value={utilNormalizeDateInput(selectedTask.end_date)}
                     onChange={(e) => setSelectedTask({ ...selectedTask, end_date: e.target.value })}
                     className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                     disabled={!isAdmin}
@@ -1879,7 +1874,7 @@ export default function PlannerPage() {
                         <div className="flex items-start justify-between mb-1">
                           <span className="text-sm font-medium text-gray-900">{comment.author_name}</span>
                           <span className="text-xs text-gray-500">
-                            {format(parseISO(comment.created_at), 'MMM d, yyyy h:mm a')}
+                            {format(parsePlannerDate(comment.created_at) || parseISO(comment.created_at), 'MMM d, yyyy h:mm a')}
                           </span>
                         </div>
                         <p className="text-sm text-gray-700 whitespace-pre-wrap">{comment.comment_text}</p>
