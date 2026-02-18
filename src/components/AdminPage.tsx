@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Shield, Save, Search, ChevronDown, Calendar, Clock, MapPin, DollarSign, User, Filter, Edit2, X, Check, Download, Plus, UserPlus, Key, Trash2, Camera } from 'lucide-react';
 import { supabase, getUserRole } from '../lib/supabase';
 import { ProfilePictureUploader } from './ProfilePictureUploader';
+import { ProfileAvatar } from './ProfileAvatar';
+import toast from 'react-hot-toast';
 import { format, parseISO, differenceInMinutes, subDays } from 'date-fns';
 
 interface TimeEntry {
@@ -86,6 +88,7 @@ function AdminPage() {
   const [resetPasswordUserId, setResetPasswordUserId] = useState<string | null>(null);
   const [isResettingPassword, setIsResettingPassword] = useState(false);
   const [rateEditValues, setRateEditValues] = useState<{ [key: string]: string }>({});
+  const [pictureTimestamps, setPictureTimestamps] = useState<{ [key: string]: number }>({});
   const [editingProfilePicture, setEditingProfilePicture] = useState<UserProfile | null>(null);
 
   useEffect(() => {
@@ -117,7 +120,7 @@ function AdminPage() {
 
       // Restrict supervisors from accessing admin dashboard
       if (profile?.role === 'supervisor') {
-        alert('Access denied: Supervisors cannot access the Admin Dashboard.');
+        toast.error('Access denied: Supervisors cannot access the Admin Dashboard.');
         window.location.href = '/';
         return;
       }
@@ -195,7 +198,7 @@ function AdminPage() {
       setUsers(data || []);
     } catch (error) {
       console.error('Error fetching users:', error);
-      alert('Failed to fetch users');
+      toast.error('Failed to fetch users');
     }
   };
 
@@ -327,10 +330,10 @@ function AdminPage() {
       // Switch back to users view
       setActiveView('users');
       
-      alert('User account created successfully!');
+      toast.success('User account created successfully!');
     } catch (error) {
       console.error('Error creating user:', error);
-      alert(`Failed to create user: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      toast.error(`Failed to create user: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsCreatingUser(false);
     }
@@ -370,15 +373,13 @@ function AdminPage() {
       const result = await response.json();
       const tempPassword = result.tempPassword;
 
-      alert(
-        `Password reset successfully!\n\n` +
-        `Email: ${userEmail}\n` +
-        `Temporary Password: ${tempPassword}\n\n` +
-        `Please share this password with the user. They should change it after logging in.`
+      toast.success(
+        `Password reset successfully!\n\nEmail: ${userEmail}\nTemporary Password: ${tempPassword}\n\nPlease share this password with the user. They should change it after logging in.`,
+        { duration: 10000 }
       );
     } catch (error) {
       console.error('Error resetting password:', error);
-      alert(`Failed to reset password: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      toast.error(`Failed to reset password: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsResettingPassword(false);
       setResetPasswordUserId(null);
@@ -455,10 +456,10 @@ function AdminPage() {
         user.id === userId ? { ...user, role: newRole } : user
       ));
 
-      alert('User role updated successfully');
+      toast.success('User role updated successfully');
     } catch (error) {
       console.error('Error updating user role:', error);
-      alert('Failed to update user role');
+      toast.error('Failed to update user role');
     } finally {
       setIsSaving(false);
     }
@@ -479,7 +480,7 @@ function AdminPage() {
       ));
     } catch (error) {
       console.error('Error updating user rate:', error);
-      alert('Failed to update user rate');
+      toast.error('Failed to update user rate');
     } finally {
       setIsSaving(false);
     }
@@ -547,7 +548,7 @@ function AdminPage() {
       fetchTimeEntries();
     } catch (error) {
       console.error('Error updating time entry:', error);
-      alert('Failed to update time entry');
+      toast.error('Failed to update time entry');
     } finally {
       setIsSaving(false);
     }
@@ -568,10 +569,10 @@ function AdminPage() {
       if (error) throw error;
 
       setTimeEntries(timeEntries.filter(entry => entry.id !== entryId));
-      alert('Time entry deleted successfully');
+      toast.success('Time entry deleted successfully');
     } catch (error) {
       console.error('Error deleting time entry:', error);
-      alert('Failed to delete time entry');
+      toast.error('Failed to delete time entry');
     } finally {
       setIsSaving(false);
     }
@@ -920,26 +921,12 @@ function AdminPage() {
                 <tr key={user.id}>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center space-x-3">
-                      {user.profile_picture_url ? (
-                        <div className="h-8 w-8 rounded-full overflow-hidden border border-gray-200 flex-shrink-0">
-                          <img
-                            src={`${user.profile_picture_url}?t=${Date.now()}`}
-                            alt={user.full_name}
-                            className="w-full h-full object-cover block"
-                            style={
-                              user.picture_metadata
-                                ? {
-                                    transform: `scale(${user.picture_metadata.zoom}) translate(${user.picture_metadata.offsetX}%, ${user.picture_metadata.offsetY}%)`
-                                  }
-                                : undefined
-                            }
-                          />
-                        </div>
-                      ) : (
-                        <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center">
-                          <User className="h-5 w-5 text-gray-400" />
-                        </div>
-                      )}
+                      <ProfileAvatar
+                        pictureUrl={user.profile_picture_url}
+                        metadata={user.picture_metadata}
+                        size="sm"
+                        lastUpdated={pictureTimestamps[user.id]}
+                      />
                       <div className="text-sm font-medium text-gray-900">{user.full_name}</div>
                     </div>
                   </td>
@@ -1278,11 +1265,14 @@ function AdminPage() {
                       ? { ...u, profile_picture_url: publicUrl, picture_metadata: metadata }
                       : u
                   ));
+                  setPictureTimestamps(prev => ({
+                    ...prev,
+                    [editingProfilePicture.id]: Date.now()
+                  }));
                   setEditingProfilePicture(null);
                 }}
                 onError={(error) => {
                   console.error('Error uploading profile picture:', error);
-                  alert(`Failed to upload profile picture: ${error.message}`);
                 }}
               />
             </div>

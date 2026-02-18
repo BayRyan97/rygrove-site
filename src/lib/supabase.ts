@@ -81,12 +81,37 @@ export interface PictureMetadata {
   offsetY: number;
 }
 
+// Helper function to delete old profile picture from storage
+async function deleteOldProfilePicture(userId: string) {
+  try {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('profile_picture_url')
+      .eq('id', userId)
+      .single();
+
+    if (profile?.profile_picture_url) {
+      const url = new URL(profile.profile_picture_url);
+      const match = url.pathname.match(/\/storage\/v1\/object\/(?:public|sign)\/avatars\/(.+)$/);
+      if (match?.[1]) {
+        await supabase.storage.from('avatars').remove([match[1]]);
+      }
+    }
+  } catch (error) {
+    // Silently fail - old file deletion shouldn't block upload
+    console.warn('Failed to delete old profile picture:', error);
+  }
+}
+
 export async function uploadProfilePicture(
   file: File,
   userId: string,
   metadata: PictureMetadata
 ) {
   try {
+    // Delete old profile picture first to prevent orphaned files
+    await deleteOldProfilePicture(userId);
+
     // Generate unique filename
     const timestamp = Date.now();
     const filePath = `${userId}/${timestamp}-${file.name}`;
@@ -122,7 +147,7 @@ export async function uploadProfilePicture(
       throw updateError;
     }
 
-    return { success: true, publicUrl, metadata };
+    return { success: true, publicUrl, metadata, timestamp };
   } catch (error) {
     console.error('Error uploading profile picture:', error);
     throw error;
@@ -140,22 +165,12 @@ export async function deleteProfilePicture(userId: string) {
 
     if (fetchError) throw fetchError;
 
-    // Delete from storage if picture exists and matches storage URL
+    // Delete from storage if picture exists
     if (profile?.profile_picture_url) {
-      let filePath: string | null = null;
-
-      try {
-        const url = new URL(profile.profile_picture_url);
-        const match = url.pathname.match(/\/storage\/v1\/object\/(?:public|sign)\/avatars\/(.+)$/);
-        if (match?.[1]) {
-          filePath = match[1];
-        }
-      } catch {
-        filePath = null;
-      }
-
-      if (filePath) {
-        await supabase.storage.from('avatars').remove([filePath]);
+      const url = new URL(profile.profile_picture_url);
+      const match = url.pathname.match(/\/storage\/v1\/object\/(?:public|sign)\/avatars\/(.+)$/);
+      if (match?.[1]) {
+        await supabase.storage.from('avatars').remove([match[1]]);
       }
     }
 
@@ -173,6 +188,26 @@ export async function deleteProfilePicture(userId: string) {
     return { success: true };
   } catch (error) {
     console.error('Error deleting profile picture:', error);
+    throw error;
+  }
+}
+
+// Helper function to update profile picture metadata (zoom/position)
+export async function updateProfilePictureMetadata(
+  userId: string,
+  metadata: PictureMetadata
+) {
+  try {
+    const { error } = await supabase
+      .from('profiles')
+      .update({ picture_metadata: metadata })
+      .eq('id', userId);
+
+    if (error) throw error;
+
+    return { success: true, metadata };
+  } catch (error) {
+    console.error('Error updating picture metadata:', error);
     throw error;
   }
 }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Calendar, DollarSign, LogOut, Eye, Shield, Menu, X, ChevronDown, FileSpreadsheet, User, Calculator, FolderKanban } from 'lucide-react';
+import { Calendar, DollarSign, LogOut, Eye, Shield, Menu, X, ChevronDown, FileSpreadsheet, Calculator, FolderKanban } from 'lucide-react';
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
@@ -11,6 +11,7 @@ import { ExpensePage } from './ExpensePage';
 import { EstimateWorksheetPage } from './EstimateWorksheetPage';
 import PlannerPage from './PlannerPage';
 import { ProfilePictureUploader } from './ProfilePictureUploader';
+import { ProfileAvatar } from './ProfileAvatar';
 import { ProtectedRoute } from './ProtectedRoute';
 
 interface DashboardProps {
@@ -41,6 +42,7 @@ export function Dashboard({ user }: DashboardProps) {
   const activeTab = location.pathname.slice(1) || 'view-activity';
   const [profile, setProfile] = useState<Profile | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [pictureTimestamp, setPictureTimestamp] = useState<number>(Date.now());
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
@@ -200,24 +202,12 @@ export function Dashboard({ user }: DashboardProps) {
                     <div className="text-sm font-medium text-gray-800">{profile?.full_name}</div>
                     <div className="text-xs text-gray-500">{user.email}</div>
                   </div>
-                  {profile?.profile_picture_url ? (
-                    <div className="h-8 w-8 rounded-full overflow-hidden border border-gray-200 flex-shrink-0">
-                      <img
-                        src={`${profile.profile_picture_url}?t=${Date.now()}`}
-                        alt="Profile"
-                        className="w-full h-full object-cover block"
-                        style={
-                          profile.picture_metadata
-                            ? {
-                                transform: `scale(${profile.picture_metadata.zoom}) translate(${profile.picture_metadata.offsetX}%, ${profile.picture_metadata.offsetY}%)`
-                              }
-                            : undefined
-                        }
-                      />
-                    </div>
-                  ) : (
-                    <User className="h-5 w-5 text-gray-400" />
-                  )}
+                  <ProfileAvatar
+                    pictureUrl={profile?.profile_picture_url}
+                    metadata={profile?.picture_metadata}
+                    size="sm"
+                    lastUpdated={pictureTimestamp}
+                  />
                 </button>
                 {isUserDropdownOpen && (
                   <div className="absolute top-full right-0 mt-1 w-[500px] bg-white rounded-xl shadow-xl border border-gray-200 p-4 z-50 max-h-[90vh] overflow-y-auto">
@@ -233,6 +223,7 @@ export function Dashboard({ user }: DashboardProps) {
                             profile_picture_url: url,
                             picture_metadata: metadata
                           } : null);
+                          setPictureTimestamp(Date.now());
                         }}
                       />
                     </div>
