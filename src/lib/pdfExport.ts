@@ -402,3 +402,152 @@ export const generateActivityPDF = (
 
   doc.save(filename);
 };
+
+interface EstimateRow {
+  id: string;
+  item: string;
+  cost: number;
+}
+
+interface EstimateData {
+  jobName: string;
+  rows: EstimateRow[];
+  overheadPercentage: number;
+  subtotal: number;
+  overheadAmount: number;
+  total: number;
+}
+
+export const generateEstimatePDF = (estimateData: EstimateData) => {
+  const doc = new jsPDF();
+  const pageWidth = doc.internal.pageSize.getWidth();
+
+  // Add header with Rygrove branding
+  const xStart = 15;
+  
+  // "RY" in blue-600
+  doc.setTextColor(37, 99, 235); // blue-600
+  doc.setFontSize(28);
+  doc.setFont('Helvetica', 'bold');
+  doc.text('RY', xStart, 18);
+  
+  // "GROVE" in blue-500
+  doc.setTextColor(59, 130, 246); // blue-500
+  doc.text('GROVE', xStart + 13, 18);
+  
+  // Horizontal line
+  doc.setDrawColor(37, 99, 235); // blue-600
+  doc.setLineWidth(1);
+  doc.line(15, 22, pageWidth - 15, 22);
+
+  // Add "ESTIMATE" title
+  let yPosition = 32;
+  doc.setFontSize(16);
+  doc.setFont('Helvetica', 'bold');
+  doc.setTextColor(31, 41, 55); // gray-800
+  doc.text('ESTIMATE', 15, yPosition);
+
+  // Add Job Name
+  yPosition += 10;
+  doc.setFontSize(14);
+  doc.setFont('Helvetica', 'bold');
+  doc.setTextColor(37, 99, 235); // blue-600
+  doc.text(estimateData.jobName, 15, yPosition);
+
+  // Add date
+  yPosition += 7;
+  doc.setFontSize(9);
+  doc.setFont('Helvetica', 'normal');
+  doc.setTextColor(107, 114, 128); // gray-600
+  doc.text(`Prepared: ${format(new Date(), 'MMMM d, yyyy')}`, 15, yPosition);
+
+  yPosition += 10;
+
+  // Create table for estimate items
+  const tableData = estimateData.rows
+    .filter(row => row.item.trim() !== '' || row.cost > 0)
+    .map(row => [
+      row.item,
+      formatCurrency(row.cost)
+    ]);
+
+  autoTable(doc, {
+    startY: yPosition,
+    head: [['Item', 'Cost']],
+    body: tableData,
+    theme: 'grid',
+    headStyles: {
+      fillColor: [37, 99, 235], // blue-600
+      textColor: [255, 255, 255],
+      fontSize: 11,
+      fontStyle: 'bold',
+      halign: 'left'
+    },
+    bodyStyles: {
+      fontSize: 10,
+      textColor: [31, 41, 55], // gray-800
+    },
+    columnStyles: {
+      0: { cellWidth: pageWidth - 70, halign: 'left' },
+      1: { cellWidth: 40, halign: 'right' }
+    },
+    alternateRowStyles: {
+      fillColor: [249, 250, 251] // gray-50
+    },
+    margin: { left: 15, right: 15 },
+  });
+
+  // Get final Y position after table
+  yPosition = (doc as any).lastAutoTable.finalY + 5;
+
+  // Add summary section
+  const summaryData = [
+    ['Overhead & Profit (' + estimateData.overheadPercentage + '%)', formatCurrency(estimateData.overheadAmount)],
+    ['TOTAL', formatCurrency(estimateData.total)]
+  ];
+
+  autoTable(doc, {
+    startY: yPosition,
+    body: summaryData,
+    theme: 'plain',
+    bodyStyles: {
+      fontSize: 11,
+      fontStyle: 'bold',
+      textColor: [31, 41, 55], // gray-800
+    },
+    columnStyles: {
+      0: { cellWidth: pageWidth - 70, halign: 'left' },
+      1: { cellWidth: 40, halign: 'right' }
+    },
+    didParseCell: function(data) {
+      if (data.row.index === summaryData.length - 1) {
+        // Style the total row
+        data.cell.styles.fillColor = [240, 253, 244]; // green-50
+        data.cell.styles.textColor = [21, 128, 61]; // green-700
+        data.cell.styles.fontSize = 13;
+        data.cell.styles.fontStyle = 'bold';
+      } else {
+        // Style the overhead row
+        data.cell.styles.fillColor = [239, 246, 255]; // blue-50
+      }
+    },
+    margin: { left: 15, right: 15 },
+  });
+
+  // Add footer
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const footerY = pageHeight - 15;
+  
+  doc.setFontSize(8);
+  doc.setFont('Helvetica', 'normal');
+  doc.setTextColor(156, 163, 175); // gray-400
+  doc.text(
+    'This estimate is valid for 30 days from the date of preparation.',
+    15,
+    footerY
+  );
+
+  // Generate filename
+  const filename = `${estimateData.jobName.replace(/[^a-z0-9]/gi, '_')}_Estimate.pdf`;
+  doc.save(filename);
+};

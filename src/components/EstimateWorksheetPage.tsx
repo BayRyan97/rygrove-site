@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Save, Download, FolderOpen, Copy, ChevronDown, ChevronRight, FilePlus } from 'lucide-react';
+import { Plus, Trash2, Save, Download, FolderOpen, Copy, ChevronDown, ChevronRight, FilePlus, FileText } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { generateEstimatePDF } from '../lib/pdfExport';
 import * as XLSX from 'xlsx';
 
 interface WorksheetRow {
@@ -436,6 +437,23 @@ export function EstimateWorksheetPage() {
     XLSX.writeFile(wb, fileName);
   };
 
+  const exportToPDF = () => {
+    if (!jobName.trim()) {
+      setSaveMessage('Please enter a job name before exporting');
+      setTimeout(() => setSaveMessage(''), 3000);
+      return;
+    }
+
+    generateEstimatePDF({
+      jobName,
+      rows,
+      overheadPercentage,
+      subtotal,
+      overheadAmount,
+      total
+    });
+  };
+
   const startNewEstimate = () => {
     setCurrentEstimateId(null);
     setJobName('');
@@ -490,6 +508,13 @@ export function EstimateWorksheetPage() {
           >
             <Download className="h-4 w-4" />
             <span>Export</span>
+          </button>
+          <button
+            onClick={exportToPDF}
+            className="flex items-center space-x-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+          >
+            <FileText className="h-4 w-4" />
+            <span>Export PDF</span>
           </button>
         </div>
       </div>
