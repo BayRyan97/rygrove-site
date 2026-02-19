@@ -487,7 +487,7 @@ export const generateEstimatePDF = (estimateData: EstimateData) => {
       textColor: [255, 255, 255],
       fontSize: 11,
       fontStyle: 'bold',
-      halign: 'left'
+      halign: 'center'
     },
     bodyStyles: {
       fontSize: 10,
