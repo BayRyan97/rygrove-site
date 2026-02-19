@@ -35,12 +35,14 @@ export function ExpensePage() {
   const [showLocationDropdown, setShowLocationDropdown] = useState<number | null>(null);
   const [showRetailerDropdown, setShowRetailerDropdown] = useState<number | null>(null);
   const [locationSearchTerm, setLocationSearchTerm] = useState('');
+  const [userId, setUserId] = useState<string | null>(null);
   const locationDropdownRef = useRef<HTMLDivElement>(null);
   const retailerDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetchLocations();
     fetchRetailers();
+    fetchCurrentUser();
 
     function handleClickOutside(event: MouseEvent) {
       if (locationDropdownRef.current && !locationDropdownRef.current.contains(event.target as Node)) {
@@ -54,6 +56,18 @@ export function ExpensePage() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  const fetchCurrentUser = async () => {
+    try {
+      const { data: { user }, error } = await supabase.auth.getUser();
+      if (error) throw error;
+      if (user) {
+        setUserId(user.id);
+      }
+    } catch (error) {
+      console.error('Error fetching current user:', error);
+    }
+  };
 
   const fetchLocations = async () => {
     try {
@@ -123,6 +137,10 @@ export function ExpensePage() {
     setIsSubmitting(true);
 
     try {
+      if (!userId) {
+        throw new Error('User not authenticated. Please refresh and try again.');
+      }
+
       for (const expense of expenses) {
         if (expense.receipt_url && expense.receipt_url.startsWith('blob:')) {
           try {
@@ -130,7 +148,7 @@ export function ExpensePage() {
             const blob = await response.blob();
             const fileExt = blob.type.split('/')[1];
             const fileName = `${crypto.randomUUID()}.${fileExt}`;
-            const filePath = `${expense.user_id}/${fileName}`;
+            const filePath = `${userId}/${fileName}`;
 
             const { error: uploadError } = await supabase.storage
               .from('receipts')
