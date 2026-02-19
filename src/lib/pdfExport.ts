@@ -440,19 +440,25 @@ export const generateEstimatePDF = (estimateData: EstimateData) => {
   doc.setLineWidth(1);
   doc.line(15, 22, pageWidth - 15, 22);
 
-  // Add "ESTIMATE" title
-  let yPosition = 32;
-  doc.setFontSize(16);
-  doc.setFont('Helvetica', 'bold');
-  doc.setTextColor(31, 41, 55); // gray-800
-  doc.text('ESTIMATE', 15, yPosition);
+  // Add address
+  let yPosition = 28;
+  doc.setFontSize(9);
+  doc.setFont('Helvetica', 'normal');
+  doc.setTextColor(107, 114, 128); // gray-600
+  doc.text('27 Carpenter St, Glen Cove, NY 11542', 15, yPosition);
 
-  // Add Job Name
+  // Add "Estimate: Job Name" title
   yPosition += 10;
   doc.setFontSize(14);
   doc.setFont('Helvetica', 'bold');
   doc.setTextColor(37, 99, 235); // blue-600
-  doc.text(estimateData.jobName, 15, yPosition);
+  const estimateLabel = 'Estimate: ';
+  doc.text(estimateLabel, 15, yPosition);
+  
+  // Get width of "Estimate: " to position job name right after it
+  const labelWidth = doc.getTextWidth(estimateLabel);
+  doc.setTextColor(31, 41, 55); // gray-800
+  doc.text(estimateData.jobName, 15 + labelWidth, yPosition);
 
   // Add date
   yPosition += 7;
