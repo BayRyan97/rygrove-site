@@ -405,11 +405,13 @@ export function EstimateWorksheetPage() {
       return;
     }
 
+    const filteredRows = rows.filter(row => row.item.trim() !== '' || row.cost !== 0);
+
     const worksheetData = [
       ['Job Name:', jobName],
       [],
       ['Item', 'Cost'],
-      ...rows.map(row => [row.item, row.cost]),
+      ...filteredRows.map(row => [row.item, row.cost]),
       [],
       ['Overhead & Profit (' + overheadPercentage + '%)', overheadAmount],
       ['Total', total],
