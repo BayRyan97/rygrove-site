@@ -517,7 +517,7 @@ export const generateEstimatePDF = (estimateData: EstimateData) => {
     body: summaryData,
     theme: 'plain',
     bodyStyles: {
-      fontSize: 11,
+      fontSize: 12,
       fontStyle: 'bold',
       textColor: [31, 41, 55], // gray-800
     },
@@ -530,11 +530,12 @@ export const generateEstimatePDF = (estimateData: EstimateData) => {
         // Style the total row
         data.cell.styles.fillColor = [240, 253, 244]; // green-50
         data.cell.styles.textColor = [21, 128, 61]; // green-700
-        data.cell.styles.fontSize = 13;
+        data.cell.styles.fontSize = 12;
         data.cell.styles.fontStyle = 'bold';
       } else {
         // Style the overhead row
         data.cell.styles.fillColor = [239, 246, 255]; // blue-50
+        data.cell.styles.fontSize = 12;
       }
     },
     margin: { left: 15, right: 15 },
