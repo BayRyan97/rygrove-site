@@ -1,3 +1,5 @@
+Added ability to select multiple users when looking at the activity chart 
+
 # Employee Time Tracking & Project Management System
 
 A comprehensive full-stack web application for managing employee time entries, expenses, invoices, project planning, and estimates. Built with React 18, TypeScript, Vite, and Supabase for small businesses and contractors.
@@ -581,18 +583,23 @@ All employee permissions plus:
 
 ## 📊 Recent Updates & Fixes
 
-### February 2026
-- ✅ **DELETE RLS Policy** - Fixed time entries reappearing after deletion
-- ✅ **Edge Function CORS** - Updated password reset with proper headers
-- ✅ **Post-it Notes Feature** - Added sticky-note brainstorming board
-- ✅ **Gantt Chart Improvements** - Automatic timeline viewport calculation
-- ✅ **Month Visibility** - Month labels on every day column for better scrolling
+### February 2026 (Latest)
+- ✅ **Client-Facing Landing Page** - Professional homepage with hamburger menu and authentication state
+- ✅ **Enhanced Invoice Management** - Markup controls, hourly rate overrides, and improved UX
+- ✅ **Professional Estimate PDFs** - Client-ready PDF exports with proper formatting and address display
+- ✅ **Receipt Upload Fixes** - Resolved paths by fetching current user ID on component mount
+- ✅ **Estimate Export Improvements** - Filtered blank rows when exporting to Excel
+- ✅ **Safari Browser Compatibility** - Fixed Gantt chart date rendering and date parsing issues
+- ✅ **Profile Picture Enhancements** - Improved UX for profile picture uploads and management
+- ✅ **Activity Page Improvements** - Location filter syncing with date range and expenses modal
+- ✅ **Multi-Select Filters** - Person filter for View Activity page
 
 ### January 2026
 - ✅ **Project Planner with Gantt Chart** - Full project management system
 - ✅ **Drag & Drop Scheduling** - Reschedule tasks by dragging
 - ✅ **Work Type Tracking** - Classification for time entries
 - ✅ **Enhanced RLS Policies** - Better admin access controls
+- ✅ **Post-it Notes Feature** - Sticky-note brainstorming board with comments
 
 ## 🏗️ Architecture Notes
 
