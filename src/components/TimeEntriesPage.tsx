@@ -92,22 +92,31 @@ export function TimeEntriesPage() {
     };
   }, []);
 
-  const createDefaultEntry = (): TimeEntry => ({
-    id: crypto.randomUUID(),
-    date: new Date().toISOString().split('T')[0],
-    is_full_day: true,
-    start_time: '08:00',
-    end_time: '16:30',
-    location: '',
-    has_lunch_break: true,
-    lunch_break: '00:30',
-    notes: '',
-    user_id: (isAdmin || isSupervisor) ? '' : userId,
-    full_name: (isAdmin || isSupervisor) ? '' : (currentUserProfile?.full_name || ''),
-    expenses: [],
-    work_type: [],
-    work_type_other: null
-  });
+  const createDefaultEntry = (): TimeEntry => {
+    // Get today's date in local timezone (not UTC)
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    const localDate = `${year}-${month}-${day}`;
+
+    return {
+      id: crypto.randomUUID(),
+      date: localDate,
+      is_full_day: true,
+      start_time: '08:00',
+      end_time: '16:30',
+      location: '',
+      has_lunch_break: true,
+      lunch_break: '00:30',
+      notes: '',
+      user_id: (isAdmin || isSupervisor) ? '' : userId,
+      full_name: (isAdmin || isSupervisor) ? '' : (currentUserProfile?.full_name || ''),
+      expenses: [],
+      work_type: [],
+      work_type_other: null
+    };
+  };
 
   const createDefaultExpense = (): Expense => ({
     amount: 0,
