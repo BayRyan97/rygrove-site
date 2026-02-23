@@ -1,5 +1,3 @@
-Added ability to select multiple users when looking at the activity chart 
-
 # Employee Time Tracking & Project Management System
 
 A comprehensive full-stack web application for managing employee time entries, expenses, invoices, project planning, and estimates. Built with React 18, TypeScript, Vite, and Supabase for small businesses and contractors.
@@ -587,6 +585,8 @@ All employee permissions plus:
 - ✅ **Client-Facing Landing Page** - Professional homepage with hamburger menu and authentication state
 - ✅ **Enhanced Invoice Management** - Markup controls, hourly rate overrides, and improved UX
 - ✅ **Professional Estimate PDFs** - Client-ready PDF exports with proper formatting and address display
+- ✅ **Supervisor Role System** - Three-tier role system with supervisor permissions and RLS policies
+- ✅ **Hourly Rate Field** - Added rate field to profiles for labor cost calculations
 - ✅ **Receipt Upload Fixes** - Resolved paths by fetching current user ID on component mount
 - ✅ **Estimate Export Improvements** - Filtered blank rows when exporting to Excel
 - ✅ **Safari Browser Compatibility** - Fixed Gantt chart date rendering and date parsing issues
