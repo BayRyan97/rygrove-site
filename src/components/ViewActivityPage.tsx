@@ -236,7 +236,9 @@ export function ViewActivityPage() {
             const hours = context.parsed.y;
             const locations = context.dataset.locationData?.[context.dataIndex] || [];
             const locationStr = locations.length > 0 ? ` at ${locations.join(', ')}` : '';
-            return `${context.dataset.label}: ${hours.toFixed(1)} hours${locationStr}`;
+            const hasWarning = context.dataset.overHoursMultiJob?.[context.dataIndex];
+            const warningText = hasWarning ? ' ⚠️ Over 8 hrs across multiple jobs' : '';
+            return `${context.dataset.label}: ${hours.toFixed(1)} hours${locationStr}${warningText}`;
           }
         }
       }
@@ -313,13 +315,27 @@ export function ViewActivityPage() {
 
       return {
         labels: sortedDates,
-        datasets: uniqueUsers.map((user) => ({
-          label: user,
-          data: sortedDates.map(date => data[date][user]?.hours || 0),
-          backgroundColor: colorMap.get(user) || generateUniqueColor(0),
-          locationData: sortedDates.map(date => data[date][user]?.locations || []),
-          entryIdsByDate: sortedDates.map(date => data[date][user]?.entryIds || []),
-        }))
+        datasets: uniqueUsers.map((user) => {
+          const dataPoints = sortedDates.map(date => data[date][user]?.hours || 0);
+          const locationData = sortedDates.map(date => data[date][user]?.locations || []);
+          const overHoursMultiJob = sortedDates.map(date => {
+            const hours = data[date][user]?.hours || 0;
+            const locations = data[date][user]?.locations || [];
+            return hours > 8 && locations.length > 1;
+          });
+
+          return {
+            label: user,
+            data: dataPoints,
+            backgroundColor: colorMap.get(user) || generateUniqueColor(0),
+            borderColor: overHoursMultiJob.map(flag => (flag ? '#dc2626' : 'transparent')),
+            borderWidth: overHoursMultiJob.map(flag => (flag ? 5 : 0)),
+            borderSkipped: false,
+            locationData,
+            entryIdsByDate: sortedDates.map(date => data[date][user]?.entryIds || []),
+            overHoursMultiJob,
+          };
+        })
       };
     } catch (error) {
       console.error('Error generating chart data:', error);
