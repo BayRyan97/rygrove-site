@@ -49,6 +49,11 @@ interface LocationSummary {
 }
 
 export function CreateInvoicePage() {
+  // Helper function to format numbers with commas
+  const formatCurrency = (value: number): string => {
+    return value.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  };
+
   const [locations, setLocations] = useState<string[]>([]);
   const [selectedLocation, setSelectedLocation] = useState('');
   const [filteredLocations, setFilteredLocations] = useState<string[]>([]);
@@ -793,19 +798,19 @@ export function CreateInvoicePage() {
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-gray-600">Labor Subtotal:</span>
-                <span className="font-medium">${locationSummary.laborSubtotal.toFixed(2)}</span>
+                <span className="font-medium">${formatCurrency(locationSummary.laborSubtotal)}</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-gray-600">
                   Labor {laborMarkupPercent < 0 ? 'Discount' : 'Markup'} ({Math.abs(laborMarkupPercent).toFixed(1)}%):
                 </span>
                 <span className={`font-medium ${laborMarkupPercent < 0 ? 'text-red-600' : 'text-green-600'}`}>
-                  {laborMarkupPercent < 0 ? '-' : ''}${Math.abs(locationSummary.laborMarkup).toFixed(2)}
+                  {laborMarkupPercent < 0 ? '-' : ''}${formatCurrency(Math.abs(locationSummary.laborMarkup))}
                 </span>
               </div>
               <div className="flex justify-between font-semibold border-t pt-2">
                 <span>Labor Total:</span>
-                <span>${locationSummary.laborTotal.toFixed(2)}</span>
+                <span>${formatCurrency(locationSummary.laborTotal)}</span>
               </div>
             </div>
 
@@ -814,19 +819,19 @@ export function CreateInvoicePage() {
               <div className="space-y-2 mb-4 pt-4 border-t">
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">Expense Subtotal:</span>
-                  <span className="font-medium">${locationSummary.totalExpenses.toFixed(2)}</span>
+                  <span className="font-medium">${formatCurrency(locationSummary.totalExpenses)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">
                     Expense {expenseMarkupPercent < 0 ? 'Discount' : 'Markup'} ({Math.abs(expenseMarkupPercent).toFixed(1)}%):
                   </span>
                   <span className={`font-medium ${expenseMarkupPercent < 0 ? 'text-red-600' : 'text-green-600'}`}>
-                    {expenseMarkupPercent < 0 ? '-' : ''}${Math.abs(locationSummary.expenseMarkup).toFixed(2)}
+                    {expenseMarkupPercent < 0 ? '-' : ''}${formatCurrency(Math.abs(locationSummary.expenseMarkup))}
                   </span>
                 </div>
                 <div className="flex justify-between font-semibold border-t pt-2">
                   <span>Expense Total:</span>
-                  <span>${locationSummary.expenseTotal.toFixed(2)}</span>
+                  <span>${formatCurrency(locationSummary.expenseTotal)}</span>
                 </div>
               </div>
             )}
@@ -834,7 +839,7 @@ export function CreateInvoicePage() {
             {/* Grand Total */}
             <div className="flex justify-between text-lg font-bold pt-4 border-t-2 border-gray-300">
               <span>GRAND TOTAL:</span>
-              <span className="text-blue-600">${locationSummary.grandTotal.toFixed(2)}</span>
+              <span className="text-blue-600">${formatCurrency(locationSummary.grandTotal)}</span>
             </div>
             
             <div className="mt-4 text-xs text-gray-500">
