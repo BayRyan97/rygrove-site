@@ -1690,7 +1690,7 @@ export function ViewActivityPage() {
                                             <>
                                               <div className="flex justify-between items-start mb-3">
                                                 <div className="flex-1">
-                                                  <p className="text-sm font-medium text-gray-900">
+                                                  <p className="text-base font-medium text-gray-900">
                                                     {formattedDate}
                                                   </p>
                                                 </div>
