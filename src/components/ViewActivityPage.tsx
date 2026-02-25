@@ -167,10 +167,12 @@ export function ViewActivityPage() {
   const [showLocationDropdown, setShowLocationDropdown] = useState(false);
   const [showLocationHighlight, setShowLocationHighlight] = useState(0);
   const [showPersonDropdown, setShowPersonDropdown] = useState(false);
+  const [showDateRangeDropdown, setShowDateRangeDropdown] = useState(false);
   const [expandedPersons, setExpandedPersons] = useState<Set<string>>(new Set());
   const [expandedLocations, setExpandedLocations] = useState<Set<string>>(new Set());
   const locationDropdownRef = useRef<HTMLDivElement>(null);
   const personDropdownRef = useRef<HTMLDivElement>(null);
+  const dateRangeDropdownRef = useRef<HTMLDivElement>(null);
   const [chartType, setChartType] = useState<'bar' | 'pie'>('bar');
   const [isAdmin, setIsAdmin] = useState(false);
   const [isSupervisor, setIsSupervisor] = useState(false);
@@ -591,6 +593,9 @@ export function ViewActivityPage() {
       if (personDropdownRef.current && !personDropdownRef.current.contains(event.target as Node)) {
         setShowPersonDropdown(false);
       }
+      if (dateRangeDropdownRef.current && !dateRangeDropdownRef.current.contains(event.target as Node)) {
+        setShowDateRangeDropdown(false);
+      }
     }
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
@@ -1000,27 +1005,106 @@ export function ViewActivityPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Date Range</label>
-            <div className="relative">
-              <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-              <select
-                value={dateRangeOption}
-                onChange={(e) => handleDateRangeChange(e.target.value as DateRangeOption)}
+            <div className="relative" ref={dateRangeDropdownRef}>
+              <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 z-10" size={20} />
+              <button
+                type="button"
+                onClick={() => setShowDateRangeDropdown(!showDateRangeDropdown)}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
+                  if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
-                    fetchEntries();
+                    setShowDateRangeDropdown(!showDateRangeDropdown);
                   }
                 }}
-                className="w-full pl-10 pr-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 appearance-none bg-white text-gray-900"
+                className="w-full pl-10 pr-10 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 text-left bg-white text-gray-900"
               >
-                <option value="week">Last Week</option>
-                <option value="month">Last Month</option>
-                <option value="quarter">Last Quarter</option>
-                <option value="6months">Last 6 Months</option>
-                <option value="year">Last Year</option>
-                <option value="custom">Custom Range</option>
-              </select>
-              <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+                {dateRangeOption === 'week' && 'Last Week'}
+                {dateRangeOption === 'month' && 'Last Month'}
+                {dateRangeOption === 'quarter' && 'Last Quarter'}
+                {dateRangeOption === '6months' && 'Last 6 Months'}
+                {dateRangeOption === 'year' && 'Last Year'}
+                {dateRangeOption === 'custom' && 'Custom Range'}
+              </button>
+              <ChevronDown
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 cursor-pointer pointer-events-none"
+                size={20}
+              />
+              {showDateRangeDropdown && (
+                <div className="absolute z-10 w-full mt-1 bg-white rounded-lg shadow-lg border border-gray-200">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleDateRangeChange('week');
+                      setShowDateRangeDropdown(false);
+                    }}
+                    className={`w-full px-4 py-2 text-left text-sm hover:bg-gray-50 border-b border-gray-200 ${
+                      dateRangeOption === 'week' ? 'font-medium text-blue-600 bg-blue-50' : 'text-gray-700'
+                    }`}
+                  >
+                    Last Week
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleDateRangeChange('month');
+                      setShowDateRangeDropdown(false);
+                    }}
+                    className={`w-full px-4 py-2 text-left text-sm hover:bg-gray-50 border-b border-gray-200 ${
+                      dateRangeOption === 'month' ? 'font-medium text-blue-600 bg-blue-50' : 'text-gray-700'
+                    }`}
+                  >
+                    Last Month
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleDateRangeChange('quarter');
+                      setShowDateRangeDropdown(false);
+                    }}
+                    className={`w-full px-4 py-2 text-left text-sm hover:bg-gray-50 border-b border-gray-200 ${
+                      dateRangeOption === 'quarter' ? 'font-medium text-blue-600 bg-blue-50' : 'text-gray-700'
+                    }`}
+                  >
+                    Last Quarter
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleDateRangeChange('6months');
+                      setShowDateRangeDropdown(false);
+                    }}
+                    className={`w-full px-4 py-2 text-left text-sm hover:bg-gray-50 border-b border-gray-200 ${
+                      dateRangeOption === '6months' ? 'font-medium text-blue-600 bg-blue-50' : 'text-gray-700'
+                    }`}
+                  >
+                    Last 6 Months
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleDateRangeChange('year');
+                      setShowDateRangeDropdown(false);
+                    }}
+                    className={`w-full px-4 py-2 text-left text-sm hover:bg-gray-50 border-b border-gray-200 ${
+                      dateRangeOption === 'year' ? 'font-medium text-blue-600 bg-blue-50' : 'text-gray-700'
+                    }`}
+                  >
+                    Last Year
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleDateRangeChange('custom');
+                      setShowDateRangeDropdown(false);
+                    }}
+                    className={`w-full px-4 py-2 text-left text-sm hover:bg-gray-50 ${
+                      dateRangeOption === 'custom' ? 'font-medium text-blue-600 bg-blue-50' : 'text-gray-700'
+                    }`}
+                  >
+                    Custom Range
+                  </button>
+                </div>
+              )}
             </div>
           </div>
           {dateRangeOption === 'custom' && (
