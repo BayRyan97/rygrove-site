@@ -565,7 +565,7 @@ export function LandingPage({ isAuthenticated = false }: LandingPageProps) {
                   value={contactEmail}
                   onChange={(e) => setContactEmail(e.target.value)}
                   required
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-600"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-600 text-gray-900"
                   placeholder="your@email.com"
                 />
               </div>
@@ -578,7 +578,7 @@ export function LandingPage({ isAuthenticated = false }: LandingPageProps) {
                   value={contactMessage}
                   onChange={(e) => setContactMessage(e.target.value)}
                   rows={4}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-600"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-600 text-gray-900"
                   placeholder="What industry are you in? How many team members?"
                 />
               </div>
