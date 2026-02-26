@@ -1455,7 +1455,12 @@ export function ViewActivityPage() {
           <div className="space-y-4">
             {groupedEntries.map(([personName, personGroup]) => {
               const isPersonExpanded = expandedPersons.has(personName);
-              const locationEntries = Array.from(personGroup.locations.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+              const locationEntries = Array.from(personGroup.locations.entries()).sort((a, b) => {
+                // Sort by most recent date (descending)
+                const aLatestDate = a[1].entries.length > 0 ? a[1].entries[0].date : '0000-00-00';
+                const bLatestDate = b[1].entries.length > 0 ? b[1].entries[0].date : '0000-00-00';
+                return bLatestDate.localeCompare(aLatestDate);
+              });
               const totalEntries = Array.from(personGroup.locations.values()).reduce((sum, loc) => sum + loc.entries.length, 0);
 
               return (
