@@ -53,7 +53,7 @@ export function LandingPage({ isAuthenticated = false }: LandingPageProps) {
     return (
       <div className="bg-white">
         {/* Hero Section */}
-        <section className="gradient-bg py-32 md:py-48 min-h-screen flex items-center justify-center">
+        <section className="gradient-bg py-24 md:py-32 min-h-screen flex items-center justify-center">
           <div className="container mx-auto px-4 text-center">
             <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-gray-800 mb-6">
               Manage Operations. <span className="text-blue-600">Maximize Profitability.</span>
@@ -68,9 +68,9 @@ export function LandingPage({ isAuthenticated = false }: LandingPageProps) {
         </section>
 
         {/* Problems Section */}
-        <section className="py-16 md:py-24 bg-gray-50">
+        <section className="py-12 md:py-16 bg-gray-50">
           <div className="container mx-auto px-4">
-            <h2 className="text-3xl md:text-4xl font-bold text-center text-gray-800 mb-12">
+            <h2 className="text-3xl md:text-4xl font-bold text-center text-gray-800 mb-8">
               The Problem With Manual Processes
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-4xl mx-auto">
@@ -100,9 +100,9 @@ export function LandingPage({ isAuthenticated = false }: LandingPageProps) {
         </section>
 
         {/* Features Section */}
-        <section id="features" className="py-16 md:py-24 bg-white">
+        <section id="features" className="py-12 md:py-16 bg-white">
           <div className="container mx-auto px-4">
-            <h2 className="text-3xl md:text-4xl font-bold text-center text-gray-800 mb-12">
+            <h2 className="text-3xl md:text-4xl font-bold text-center text-gray-800 mb-8">
               Everything You Need to Run Your Business
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
@@ -194,9 +194,9 @@ export function LandingPage({ isAuthenticated = false }: LandingPageProps) {
         </section>
 
         {/* Use Cases / Benefits by Role */}
-        <section id="benefits" className="py-16 md:py-24 bg-gray-50">
+        <section id="benefits" className="py-12 md:py-16 bg-gray-50">
           <div className="container mx-auto px-4">
-            <h2 className="text-3xl md:text-4xl font-bold text-center text-gray-800 mb-12">
+            <h2 className="text-3xl md:text-4xl font-bold text-center text-gray-800 mb-8">
               Built for Your Entire Team
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
@@ -331,15 +331,15 @@ export function LandingPage({ isAuthenticated = false }: LandingPageProps) {
       </header>
 
       {/* Hero Section */}
-      <section className="gradient-bg py-20 md:py-32">
-        <div className="container mx-auto px-4 text-center">
-          <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-gray-800 mb-6">
+      <section className="gradient-bg py-16 md:py-24 min-h-[70vh] flex items-center justify-center">
+        <div className="max-w-2xl mx-auto px-4 text-center">
+          <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold text-gray-800 mb-3">
             Manage Operations. <span className="text-blue-600">Maximize Profitability.</span>
           </h1>
-          <p className="text-lg md:text-xl text-gray-600 mb-4 max-w-2xl mx-auto">
+          <p className="text-base md:text-lg text-gray-600 mb-2">
             Rygrove is the all-in-one platform for contractors and small businesses to track time, manage expenses, generate invoices, and plan projects—all in one place.
           </p>
-          <p className="text-gray-600 mb-8 max-w-2xl mx-auto">
+          <p className="text-sm md:text-base text-gray-600 mb-4">
             Stop wasting time on spreadsheets. Get visibility into profitability. Get paid faster.
           </p>
           
@@ -361,9 +361,9 @@ export function LandingPage({ isAuthenticated = false }: LandingPageProps) {
       </section>
 
       {/* Problems Section */}
-      <section className="py-16 md:py-24 bg-gray-50">
+      <section className="py-12 md:py-16 bg-gray-50">
         <div className="container mx-auto px-4">
-          <h2 className="text-3xl md:text-4xl font-bold text-center text-gray-800 mb-12">
+          <h2 className="text-3xl md:text-4xl font-bold text-center text-gray-800 mb-8">
             The Problem With Manual Processes
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-4xl mx-auto">
@@ -393,9 +393,9 @@ export function LandingPage({ isAuthenticated = false }: LandingPageProps) {
       </section>
 
       {/* Features Section */}
-      <section id="features" className="py-16 md:py-24 bg-white">
+      <section id="features" className="py-12 md:py-16 bg-white">
         <div className="container mx-auto px-4">
-          <h2 className="text-3xl md:text-4xl font-bold text-center text-gray-800 mb-12">
+          <h2 className="text-3xl md:text-4xl font-bold text-center text-gray-800 mb-8">
             Everything You Need to Run Your Business
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
@@ -487,9 +487,9 @@ export function LandingPage({ isAuthenticated = false }: LandingPageProps) {
       </section>
 
       {/* Use Cases / Benefits by Role */}
-      <section id="benefits" className="py-16 md:py-24 bg-gray-50">
+      <section id="benefits" className="py-12 md:py-16 bg-gray-50">
         <div className="container mx-auto px-4">
-          <h2 className="text-3xl md:text-4xl font-bold text-center text-gray-800 mb-12">
+          <h2 className="text-3xl md:text-4xl font-bold text-center text-gray-800 mb-8">
             Built for Your Entire Team
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
@@ -545,13 +545,13 @@ export function LandingPage({ isAuthenticated = false }: LandingPageProps) {
       </section>
 
       {/* Contact / Demo CTA Section */}
-      <section id="contact" className="py-16 md:py-24 bg-blue-600 text-white">
+      <section id="contact" className="py-12 md:py-16 bg-blue-600 text-white">
         <div className="container mx-auto px-4">
           <div className="max-w-2xl mx-auto">
-            <h2 className="text-3xl md:text-4xl font-bold text-center mb-6">
+            <h2 className="text-3xl md:text-4xl font-bold text-center mb-4">
               Ready to Take Control of Your Operations?
             </h2>
-            <p className="text-center text-blue-100 mb-12">
+            <p className="text-center text-blue-100 mb-8">
               Join contractors and small businesses already using Rygrove to streamline operations and maximize profitability.
             </p>
 
@@ -598,7 +598,7 @@ export function LandingPage({ isAuthenticated = false }: LandingPageProps) {
       </section>
 
       {/* Footer */}
-      <footer className="bg-gray-800 text-gray-300 py-12">
+      <footer className="bg-gray-800 text-gray-300 py-8">
         <div className="container mx-auto px-4">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
             <div>
