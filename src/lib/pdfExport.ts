@@ -138,16 +138,21 @@ const addSummaryCards = (
   return yPosition + (Math.ceil(cards.length / 2) * (cardHeight + cardGap)) + 5;
 };
 
-const drawBarChart = (
+
+// Horizontal bar chart for location hours (no truncation)
+const drawHorizontalBarChart = (
   doc: jsPDF,
   yPosition: number,
   entries: TimeEntry[],
   maxHeight: number
 ) => {
   const pageWidth = doc.internal.pageSize.getWidth();
-  const chartWidth = pageWidth - 30;
-  const chartHeight = maxHeight;
   const chartX = 15;
+  const labelX = chartX + 5; // extra left margin for labels
+  const barStartX = chartX + 60; // move bars further right
+  const chartWidth = pageWidth - barStartX - 15; // leave margin for labels and right edge
+  const barHeight = 8;
+  const barGap = 4;
 
   // Group by location
   const locationHours: { [location: string]: number } = {};
@@ -161,7 +166,7 @@ const drawBarChart = (
 
   const sortedLocations = Object.entries(locationHours)
     .sort((a, b) => b[1] - a[1])
-    .slice(0, 6); // Top 6 locations
+    .slice(0, 10); // Top 10 locations
 
   if (sortedLocations.length === 0) return yPosition;
 
@@ -170,56 +175,29 @@ const drawBarChart = (
   doc.setFont('Helvetica', 'bold');
   doc.setTextColor(17, 24, 39); // gray-900
   doc.text('Hours by Location', chartX, yPosition);
-
   yPosition += 8;
 
   const maxHours = Math.max(...sortedLocations.map(([, hours]) => hours));
-  const barWidth = chartWidth / sortedLocations.length;
-  const barGap = 2;
-  const maxBarHeight = chartHeight - 25;
-
-  const colors = [
-    [37, 99, 235], // blue-600
-    [59, 130, 246], // blue-500
-    [96, 165, 250], // blue-400
-    [147, 197, 253], // blue-300
-    [191, 219, 254], // blue-200
-    [219, 234, 254]  // blue-100
-  ];
 
   sortedLocations.forEach(([location, hours], index) => {
-    const barHeight = (hours / maxHours) * maxBarHeight;
-    const barX = chartX + index * barWidth + barGap;
-    const barY = yPosition + maxBarHeight - barHeight;
-
+    const barY = yPosition + index * (barHeight + barGap);
+    const barLen = (hours / maxHours) * chartWidth;
     // Draw bar
-    const color = colors[index % colors.length];
-    doc.setFillColor(color[0], color[1], color[2]);
-    doc.rect(barX, barY, barWidth - barGap * 2, barHeight, 'F');
-
-    // Label
-    doc.setFontSize(8);
+    doc.setFillColor(37, 99, 235); // blue-600
+    doc.rect(barStartX, barY, barLen, barHeight, 'F');
+    // Location label (no truncation, left-aligned, vertically centered)
+    doc.setFontSize(9);
     doc.setFont('Helvetica', 'normal');
     doc.setTextColor(55, 65, 81); // gray-700
-    const locationText = location.length > 10 ? location.substring(0, 10) + '...' : location;
-    doc.text(locationText, barX + (barWidth - barGap * 2) / 2, yPosition + maxBarHeight + 5, {
-      align: 'center',
-      maxWidth: barWidth - barGap * 2
-    });
-
-    // Value on top of bar
-    doc.setFontSize(7);
+    doc.text(location, labelX, barY + barHeight / 2 + 3, { align: 'left' });
+    // Hours value at end of bar
+    doc.setFontSize(8);
     doc.setFont('Helvetica', 'bold');
     doc.setTextColor(37, 99, 235); // blue-600
-    doc.text(formatHours(hours), barX + (barWidth - barGap * 2) / 2, barY - 2, { align: 'center' });
+    doc.text(formatHours(hours), barStartX + barLen + 4, barY + barHeight / 2 + 3, { align: 'left' });
   });
 
-  // Y-axis line
-  doc.setDrawColor(229, 231, 235); // gray-200
-  doc.setLineWidth(0.5);
-  doc.line(chartX, yPosition, chartX, yPosition + maxBarHeight);
-
-  return yPosition + maxBarHeight + 15;
+  return yPosition + sortedLocations.length * (barHeight + barGap) + 10;
 };
 
 export const generateActivityPDF = (
@@ -265,15 +243,80 @@ export const generateActivityPDF = (
 
   yPosition += 3;
 
-  // Summary cards
-  yPosition = addSummaryCards(doc, yPosition, summary, entries.reduce((total, entry) => {
-    const hours = calculateDuration(entry.start_time, entry.end_time, entry.lunch_break);
-    const rate = entry.rate || 0;
-    return total + (hours * rate);
-  }, 0), isSupervisor);
 
-  // Chart
-  yPosition = drawBarChart(doc, yPosition, entries, 50);
+  // Expanded summary metrics
+  const uniqueEmployees = new Set(entries.map(e => e.full_name)).size;
+  const totalEntries = entries.length;
+  const dateSpanDays = Math.max(1, Math.ceil((parseISO(endDate).getTime() - parseISO(startDate).getTime()) / (1000 * 60 * 60 * 24)));
+  const avgHoursPerDay = summary.totalHours / dateSpanDays;
+
+  // 3-column grid (6 cards)
+  const cards = [
+    { label: 'Total Hours', value: formatHours(summary.totalHours) },
+    { label: 'Total Expenses', value: formatCurrency(summary.totalExpenses) },
+    { label: 'Labor Cost', value: formatCurrency(entries.reduce((total, entry) => {
+      const hours = calculateDuration(entry.start_time, entry.end_time, entry.lunch_break);
+      const rate = entry.rate || 0;
+      return total + (hours * rate);
+    }, 0)) },
+    { label: 'Employees', value: uniqueEmployees.toString() },
+    { label: 'Entries', value: totalEntries.toString() },
+    { label: 'Avg Hours/Day', value: formatHours(avgHoursPerDay) }
+  ];
+  let xPos = 15;
+  let yPosCards = yPosition;
+  const colWidth = (doc.internal.pageSize.getWidth() - 30) / 3;
+  const cardHeight = 22;
+  const cardGap = 5;
+  cards.forEach((card, idx) => {
+    doc.setFillColor(249, 250, 251); // gray-50
+    doc.setDrawColor(229, 231, 235); // gray-200
+    doc.setLineWidth(0.5);
+    doc.rect(xPos, yPosCards, colWidth, cardHeight, 'FD');
+    doc.setFontSize(9);
+    doc.setFont('Helvetica', 'normal');
+    doc.setTextColor(107, 114, 128); // gray-600
+    doc.text(card.label, xPos + 4, yPosCards + 8);
+    doc.setFontSize(15);
+    doc.setFont('Helvetica', 'bold');
+    doc.setTextColor(37, 99, 235); // blue-600
+    doc.text(card.value, xPos + 4, yPosCards + 18);
+    xPos += colWidth + cardGap;
+    if ((idx + 1) % 3 === 0) {
+      xPos = 15;
+      yPosCards += cardHeight + cardGap;
+    }
+  });
+  yPosition = yPosCards + 5;
+
+  // Top contributors section
+  // Top 3 employees by hours
+  const employeeHours: { [name: string]: number } = {};
+  entries.forEach(entry => {
+    const hours = calculateDuration(entry.start_time, entry.end_time, entry.lunch_break);
+    employeeHours[entry.full_name] = (employeeHours[entry.full_name] || 0) + hours;
+  });
+  const topEmployees = Object.entries(employeeHours)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3);
+  if (topEmployees.length > 0) {
+    doc.setFontSize(11);
+    doc.setFont('Helvetica', 'bold');
+    doc.setTextColor(17, 24, 39); // gray-900
+    doc.text('Top Contributors', 15, yPosition);
+    yPosition += 7;
+    doc.setFontSize(9);
+    doc.setFont('Helvetica', 'normal');
+    doc.setTextColor(55, 65, 81); // gray-700
+    topEmployees.forEach(([name, hours], idx) => {
+      const pct = ((hours / summary.totalHours) * 100).toFixed(1);
+      doc.text(`${name}: ${formatHours(hours)} hrs (${pct}%)`, 15, yPosition + idx * 5);
+    });
+    yPosition += topEmployees.length * 5 + 3;
+  }
+
+  // Horizontal bar chart
+  yPosition = drawHorizontalBarChart(doc, yPosition, entries, 70);
 
   // ===== PAGE 2: DETAILED BREAKDOWN =====
   doc.addPage();
