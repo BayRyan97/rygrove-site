@@ -628,6 +628,22 @@ export function LandingPage({ isAuthenticated = false }: LandingPageProps) {
           </div>
         </div>
       </footer>
+      {/* Gifypet widget: only show for unauthenticated users */}
+      {!isAuthenticated && (
+        <div
+          className="fixed bottom-4 right-4 z-50 w-[314px] h-[321px] pointer-events-auto hidden sm:block"
+          aria-label="Animated dog helper widget"
+        >
+          <iframe
+            width="314"
+            height="321"
+            scrolling="no"
+            src="https://gifypet.neocities.org/pet/pet.html?name=Ben&dob=1772235094&gender=m&element=Air&pet=dog.gif&map=&background=&tablecolor=%23000000&textcolor=%23000000"
+            frameBorder="0"
+            title="Animated dog helper Ben"
+          />
+        </div>
+      )}
     </div>
   );
 }
