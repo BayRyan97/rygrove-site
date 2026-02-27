@@ -436,12 +436,14 @@ export const generateActivityPDF = (
     }
   });
 
-  // Generate filename
+  // Generate filename with date and time down to the second
+  const now = new Date();
+  const dateTimeStr = format(now, 'yyyy-MM-dd_HH-mm-ss');
   const dateRange = `${format(parseISO(startDate), 'MMM-d')}-${format(parseISO(endDate), 'MMM-d-yyyy')}`;
   let filename = 'Activity-Report';
   if (personName) filename += `-${personName}`;
   if (location) filename += `-${location}`;
-  filename += `-${dateRange}.pdf`;
+  filename += `-${dateRange}-${dateTimeStr}.pdf`;
 
   doc.save(filename);
 };
