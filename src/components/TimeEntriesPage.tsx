@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Plus, RefreshCw, MapPin, ChevronDown, DollarSign, User, Store, Upload, Trash2, X, Copy } from 'lucide-react';
 import { supabase, getUserRole } from '../lib/supabase';
 import { format, parseISO, differenceInMinutes, addDays } from 'date-fns';
+import { useAudioFeedback } from '../lib/useAudioFeedback';
 
 interface Profile {
   id: string;
@@ -42,6 +43,7 @@ const LUNCH_BREAK_OPTIONS = [
 ];
 
 export function TimeEntriesPage() {
+  const { playErrorSound } = useAudioFeedback();
   const [entries, setEntries] = useState<TimeEntry[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
@@ -250,6 +252,7 @@ export function TimeEntriesPage() {
     // Validate work_type selection: at least one must be selected per entry
     for (const entry of entries) {
       if (!entry.work_type || entry.work_type.length === 0) {
+        playErrorSound('validation');
         alert('Please select at least one Work Type for every time entry.');
         return;
       }
@@ -384,6 +387,7 @@ export function TimeEntriesPage() {
       alert('Time entries and expenses submitted successfully!');
     } catch (error) {
       console.error('Error submitting entries:', error);
+      playErrorSound('critical');
       alert('Failed to submit entries. Please try again.');
     } finally {
       setIsSubmitting(false);
