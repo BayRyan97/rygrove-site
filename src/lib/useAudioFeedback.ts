@@ -17,16 +17,25 @@ export const useAudioFeedback = () => {
       };
 
       const audioPath = audioMap[errorType];
-      const audio = new Audio(audioPath);
+      console.log(`Playing error sound: ${errorType} -> ${audioPath}`);
       
-      // Set volume and play with error handling
-      audio.volume = 0.5; // 50% volume
-      audio.play().catch((err) => {
-        console.debug('Audio playback failed (expected in muted contexts):', err);
-      });
+      const audio = new Audio(audioPath);
+      audio.volume = 1.0; // 100% volume for clarity
+      
+      // Play with error handling
+      const playPromise = audio.play();
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => {
+            console.log(`Successfully played: ${audioPath}`);
+          })
+          .catch((err) => {
+            console.warn(`Audio playback failed for ${audioPath}:`, err);
+          });
+      }
     } catch (err) {
       // Silently fail - don't break the app if audio doesn't play
-      console.debug('Audio feedback error:', err);
+      console.warn('Audio feedback error:', err);
     }
   }, []);
 
