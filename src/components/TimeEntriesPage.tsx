@@ -252,8 +252,13 @@ export function TimeEntriesPage() {
     // Validate work_type selection: at least one must be selected per entry
     for (const entry of entries) {
       if (!entry.work_type || entry.work_type.length === 0) {
+        // Play sound immediately and log error
         playErrorSound('random');
-        alert('Please select at least one Work Type for every time entry.');
+        console.error('❌ Validation Error: Please select at least one Work Type for every time entry.');
+        // Delay alert to let audio play first
+        setTimeout(() => {
+          alert('Please select at least one Work Type for every time entry.');
+        }, 100);
         return;
       }
       if (entry.work_type.includes('Other')) {
@@ -384,11 +389,17 @@ export function TimeEntriesPage() {
 
       setEntries([createDefaultEntry()]);
       await fetchLocations();
+      console.log('✅ Success: Time entries and expenses submitted successfully!');
       alert('Time entries and expenses submitted successfully!');
     } catch (error) {
       console.error('Error submitting entries:', error);
+      // Play sound immediately and log error
       playErrorSound('random');
-      alert('Failed to submit entries. Please try again.');
+      console.error('❌ Submission Error: Failed to submit entries. Please try again.');
+      // Delay alert to let audio play first
+      setTimeout(() => {
+        alert('Failed to submit entries. Please try again.');
+      }, 100);
     } finally {
       setIsSubmitting(false);
     }
@@ -520,10 +531,20 @@ export function TimeEntriesPage() {
       });
     } catch (error) {
       console.error('Error uploading file:', error);
+      // Play error sound immediately
+      playErrorSound('random');
       if (error instanceof Error) {
-        alert(error.message);
+        console.error('❌ File Upload Error:', error.message);
+        // Delay alert to let audio play first
+        setTimeout(() => {
+          alert(error.message);
+        }, 100);
       } else {
-        alert('Failed to upload receipt. Please try again.');
+        console.error('❌ File Upload Error: Failed to upload receipt.');
+        // Delay alert to let audio play first
+        setTimeout(() => {
+          alert('Failed to upload receipt. Please try again.');
+        }, 100);
       }
     }
   };

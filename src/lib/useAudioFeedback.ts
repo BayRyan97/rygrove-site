@@ -1,10 +1,11 @@
 import { useCallback } from 'react';
 
 type ErrorType = 'validation' | 'critical' | 'general' | 'random';
+type SuccessType = 'general';
 
 /**
- * Custom hook to play audio feedback on errors
- * Supports different sounds for different error types
+ * Custom hook to play audio feedback on errors and success events
+ * Supports different sounds for different event types
  */
 export const useAudioFeedback = () => {
   const playErrorSound = useCallback((errorType: ErrorType = 'random') => {
@@ -29,16 +30,16 @@ export const useAudioFeedback = () => {
       const audio = new Audio(audioPath);
       audio.volume = 1.0; // 100% volume for clarity
       
-      // Play with error handling
-      const playPromise = audio.play();
-      if (playPromise !== undefined) {
-        playPromise
-          .then(() => {
-            console.log(`Successfully played: ${audioPath}`);
-          })
-          .catch((err) => {
-            console.warn(`Audio playback failed for ${audioPath}:`, err);
-          });
+      // Set preload to ensure immediate playback
+      audio.preload = 'auto';
+      
+      // Play immediately and synchronously
+      try {
+        audio.play().catch((err) => {
+          console.warn(`Audio playback failed for ${audioPath}:`, err);
+        });
+      } catch (err) {
+        console.warn(`Audio play() failed for ${audioPath}:`, err);
       }
     } catch (err) {
       // Silently fail - don't break the app if audio doesn't play
@@ -46,5 +47,31 @@ export const useAudioFeedback = () => {
     }
   }, []);
 
-  return { playErrorSound };
+  const playSuccessSound = useCallback((successType: SuccessType = 'general') => {
+    try {
+      const audioPath = '/audio/yes_1.mp3'; // Success sound
+      
+      console.log(`Playing success sound: ${successType} -> ${audioPath}`);
+      
+      const audio = new Audio(audioPath);
+      audio.volume = 1.0; // 100% volume for clarity
+      
+      // Set preload to ensure immediate playback
+      audio.preload = 'auto';
+      
+      // Play immediately and synchronously
+      try {
+        audio.play().catch((err) => {
+          console.warn(`Audio playback failed for ${audioPath}:`, err);
+        });
+      } catch (err) {
+        console.warn(`Audio play() failed for ${audioPath}:`, err);
+      }
+    } catch (err) {
+      // Silently fail - don't break the app if audio doesn't play
+      console.warn('Audio feedback error:', err);
+    }
+  }, []);
+
+  return { playErrorSound, playSuccessSound };
 };
