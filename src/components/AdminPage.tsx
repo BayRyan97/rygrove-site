@@ -200,7 +200,7 @@ function AdminPage() {
       setUsers(data || []);
     } catch (error) {
       console.error('Error fetching users:', error);
-      playErrorSound('critical');
+      playErrorSound('random');
       toast.error('Failed to fetch users');
     }
   };
@@ -336,7 +336,7 @@ function AdminPage() {
       toast.success('User account created successfully!');
     } catch (error) {
       console.error('Error creating user:', error);
-      playErrorSound('critical');
+      playErrorSound('random');
       toast.error(`Failed to create user: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsCreatingUser(false);

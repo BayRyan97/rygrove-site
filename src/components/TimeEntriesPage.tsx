@@ -252,7 +252,7 @@ export function TimeEntriesPage() {
     // Validate work_type selection: at least one must be selected per entry
     for (const entry of entries) {
       if (!entry.work_type || entry.work_type.length === 0) {
-        playErrorSound('validation');
+        playErrorSound('random');
         alert('Please select at least one Work Type for every time entry.');
         return;
       }
@@ -387,7 +387,7 @@ export function TimeEntriesPage() {
       alert('Time entries and expenses submitted successfully!');
     } catch (error) {
       console.error('Error submitting entries:', error);
-      playErrorSound('critical');
+      playErrorSound('random');
       alert('Failed to submit entries. Please try again.');
     } finally {
       setIsSubmitting(false);

@@ -122,7 +122,7 @@ export function AuthForm() {
       }
     } catch (err) {
       console.error('Auth error:', err);
-      playErrorSound('validation');
+      playErrorSound('random');
       setError(err instanceof Error ? err.message : 'Authentication failed - please try again');
     } finally {
       setLoading(false);
