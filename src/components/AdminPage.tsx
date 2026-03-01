@@ -5,6 +5,7 @@ import { ProfilePictureUploader } from './ProfilePictureUploader';
 import { ProfileAvatar } from './ProfileAvatar';
 import toast from 'react-hot-toast';
 import { format, parseISO, differenceInMinutes, subDays } from 'date-fns';
+import { useAudioFeedback } from '../lib/useAudioFeedback';
 
 interface TimeEntry {
   id: string;
@@ -63,6 +64,7 @@ const calculateTotalHours = (entry: TimeEntry): number => {
 };
 
 function AdminPage() {
+  const { playErrorSound } = useAudioFeedback();
   const [activeView, setActiveView] = useState<AdminView>('users');
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([]);
@@ -198,6 +200,7 @@ function AdminPage() {
       setUsers(data || []);
     } catch (error) {
       console.error('Error fetching users:', error);
+      playErrorSound('critical');
       toast.error('Failed to fetch users');
     }
   };
@@ -333,6 +336,7 @@ function AdminPage() {
       toast.success('User account created successfully!');
     } catch (error) {
       console.error('Error creating user:', error);
+      playErrorSound('critical');
       toast.error(`Failed to create user: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsCreatingUser(false);

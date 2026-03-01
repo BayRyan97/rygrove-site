@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { Mail, Lock, Loader2, User, ArrowLeft } from 'lucide-react';
+import { useAudioFeedback } from '../lib/useAudioFeedback';
 
 type AuthMode = 'signin' | 'signup' | 'reset-password' | 'update-password';
 
 export function AuthForm() {
+  const { playErrorSound } = useAudioFeedback();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -120,6 +122,7 @@ export function AuthForm() {
       }
     } catch (err) {
       console.error('Auth error:', err);
+      playErrorSound('validation');
       setError(err instanceof Error ? err.message : 'Authentication failed - please try again');
     } finally {
       setLoading(false);
