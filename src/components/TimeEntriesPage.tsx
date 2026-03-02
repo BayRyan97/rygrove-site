@@ -43,7 +43,7 @@ const LUNCH_BREAK_OPTIONS = [
 ];
 
 export function TimeEntriesPage() {
-  const { playErrorSound } = useAudioFeedback();
+  const { playErrorSound, playSuccessSound } = useAudioFeedback();
   const [entries, setEntries] = useState<TimeEntry[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
@@ -249,8 +249,29 @@ export function TimeEntriesPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Validate work_type selection: at least one must be selected per entry
+    // Validate all required fields
     for (const entry of entries) {
+      // Validate employee/name selection (required for admins/supervisors)
+      if ((isAdmin || isSupervisor) && !entry.user_id) {
+        playErrorSound('random');
+        console.error('❌ Validation Error: Please select an employee for every time entry.');
+        setTimeout(() => {
+          alert('Please select an employee for every time entry.');
+        }, 100);
+        return;
+      }
+
+      // Validate location
+      if (!entry.location || entry.location.trim() === '') {
+        playErrorSound('random');
+        console.error('❌ Validation Error: Please enter a location for every time entry.');
+        setTimeout(() => {
+          alert('Please enter a location for every time entry.');
+        }, 100);
+        return;
+      }
+
+      // Validate work_type selection: at least one must be selected per entry
       if (!entry.work_type || entry.work_type.length === 0) {
         // Play sound immediately and log error
         playErrorSound('random');
@@ -389,8 +410,11 @@ export function TimeEntriesPage() {
 
       setEntries([createDefaultEntry()]);
       await fetchLocations();
+      playSuccessSound();
       console.log('✅ Success: Time entries and expenses submitted successfully!');
-      alert('Time entries and expenses submitted successfully!');
+      setTimeout(() => {
+        alert('Time entries and expenses submitted successfully!');
+      }, 100);
     } catch (error) {
       console.error('Error submitting entries:', error);
       // Play sound immediately and log error
@@ -631,7 +655,6 @@ export function TimeEntriesPage() {
                         }}
                         className="w-full pl-8 pr-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                         placeholder="Select employee"
-                        required
                       />
                       {activeEmployeeDropdownIndex === entryIndex && (
                           <div className="absolute z-10 w-full mt-1 bg-white rounded-lg shadow-lg border border-gray-200 max-h-60 overflow-y-auto">
@@ -709,7 +732,6 @@ export function TimeEntriesPage() {
                       }}
                       className="w-full pl-8 pr-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                       placeholder="Enter or select location"
-                      required
                     />
                     <ChevronDown
                       className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 cursor-pointer"
