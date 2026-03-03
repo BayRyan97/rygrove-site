@@ -3,6 +3,7 @@ import { format, parseISO, differenceInMinutes, eachDayOfInterval, subDays, subM
 import { Calendar, Search, User, MapPin, ChevronDown, ChevronRight, X, Download, Trash2 } from 'lucide-react';
 import { supabase, getUserRole } from '../lib/supabase';
 import { generateActivityPDF } from '../lib/pdfExport';
+import { distinctColors, generateUniqueColor } from '../lib/colorUtils';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -40,6 +41,7 @@ interface TimeEntry {
   work_type?: string[] | null;
   work_type_other?: string | null;
   rate?: number | null;
+  chart_color?: string | null;
   expenses: {
     amount: number;
     description: string;
@@ -53,78 +55,6 @@ interface ActivitySummary {
   uniqueLocations: Set<string>;
 }
 
-const distinctColors = [
-  'hsl(15, 75%, 55%)',   // Orange-red
-  'hsl(45, 85%, 50%)',   // Golden yellow
-  'hsl(120, 60%, 45%)',  // Green
-  'hsl(200, 75%, 50%)',  // Sky blue
-  'hsl(280, 60%, 55%)',  // Purple
-  'hsl(340, 75%, 55%)',  // Pink
-  'hsl(30, 80%, 50%)',   // Orange
-  'hsl(180, 60%, 45%)',  // Teal
-  'hsl(260, 70%, 60%)',  // Violet
-  'hsl(90, 55%, 45%)',   // Lime green
-  'hsl(320, 70%, 55%)',  // Magenta
-  'hsl(160, 60%, 45%)',  // Sea green
-  'hsl(210, 80%, 60%)',  // Light blue
-  'hsl(350, 80%, 50%)',  // Red
-  'hsl(60, 70%, 50%)',   // Yellow
-  'hsl(140, 65%, 45%)',  // Forest green
-  'hsl(190, 70%, 50%)',  // Cyan
-  'hsl(300, 65%, 55%)',  // Fuchsia
-  'hsl(20, 75%, 55%)',   // Coral
-  'hsl(240, 60%, 60%)',  // Periwinkle
-  'hsl(8, 80%, 58%)',    // Tomato
-  'hsl(38, 78%, 52%)',   // Amber
-  'hsl(75, 65%, 48%)',   // Chartreuse
-  'hsl(105, 70%, 42%)',  // Grass green
-  'hsl(135, 55%, 50%)',  // Emerald
-  'hsl(165, 65%, 45%)',  // Turquoise
-  'hsl(195, 75%, 55%)',  // Azure
-  'hsl(220, 70%, 58%)',  // Cornflower
-  'hsl(250, 65%, 58%)',  // Slate blue
-  'hsl(270, 68%, 60%)',  // Amethyst
-  'hsl(290, 72%, 58%)',  // Orchid
-  'hsl(310, 75%, 60%)',  // Hot pink
-  'hsl(330, 78%, 58%)',  // Rose
-  'hsl(355, 85%, 55%)',  // Crimson
-  'hsl(25, 82%, 54%)',   // Tangerine
-  'hsl(50, 80%, 52%)',   // Gold
-  'hsl(68, 75%, 48%)',   // Lime
-  'hsl(95, 60%, 45%)',   // Olive green
-  'hsl(125, 58%, 48%)',  // Kelly green
-  'hsl(150, 62%, 46%)',  // Jade
-  'hsl(170, 68%, 48%)',  // Aquamarine
-  'hsl(185, 72%, 52%)',  // Caribbean
-  'hsl(205, 78%, 58%)',  // Dodger blue
-  'hsl(230, 65%, 60%)',  // Royal blue
-  'hsl(255, 70%, 62%)',  // Iris
-  'hsl(275, 68%, 58%)',  // Lavender
-  'hsl(295, 72%, 60%)',  // Violet-pink
-  'hsl(315, 76%, 58%)',  // Cerise
-  'hsl(335, 80%, 56%)',  // Raspberry
-  'hsl(5, 82%, 56%)',    // Scarlet
-];
-
-const generateUniqueColor = (index: number): string => {
-  if (index < distinctColors.length) {
-    return distinctColors[index];
-  }
-  const goldenRatio = 0.618033988749895;
-  const hue = ((index - distinctColors.length) * goldenRatio * 360) % 360;
-  const saturation = 65 + ((index - distinctColors.length) % 5) * 5;
-  const lightness = 45 + (((index - distinctColors.length) * 11) % 4) * 5;
-  return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
-};
-
-const createColorMapper = (users: string[]) => {
-  const colorMap = new Map<string, string>();
-  users.forEach((user, index) => {
-    colorMap.set(user, generateUniqueColor(index));
-  });
-  return colorMap;
-};
-
 const calculateDuration = (start: string, end: string, lunchBreak: string | null) => {
   const startTime = parseISO(`2000-01-01T${start}`);
   const endTime = parseISO(`2000-01-01T${end}`);
@@ -136,6 +66,15 @@ const calculateDuration = (start: string, end: string, lunchBreak: string | null
   }
   
   return minutes / 60;
+};
+
+const createColorMapper = (users: string[], userColorMap: Map<string, string | null>) => {
+  const colorMap = new Map<string, string>();
+  users.forEach((user, index) => {
+    const customColor = userColorMap.get(user);
+    colorMap.set(user, customColor || generateUniqueColor(index));
+  });
+  return colorMap;
 };
 
 const formatHours = (hours: number): string => {
@@ -312,8 +251,16 @@ export function ViewActivityPage() {
       const uniqueUsers = Array.from(new Set(entries.map(entry => entry.full_name))).sort();
       const sortedDates = Object.keys(data).sort();
 
+      // Create user-to-color map from entries
+      const userColorMap = new Map<string, string | null>();
+      entries.forEach(entry => {
+        if (!userColorMap.has(entry.full_name)) {
+          userColorMap.set(entry.full_name, entry.chart_color || null);
+        }
+      });
+
       // Map one color per user so the same person keeps the same color across the chart
-      const colorMap = createColorMapper(uniqueUsers);
+      const colorMap = createColorMapper(uniqueUsers, userColorMap);
 
       return {
         labels: sortedDates,
@@ -740,35 +687,39 @@ export function ViewActivityPage() {
       const { data, error } = await query;
       if (error) throw error;
 
-      // Fetch rates for all unique user_ids if admin/supervisor
+      // Fetch rates and chart colors for all unique user_ids if admin/supervisor
       const rateMap = new Map<string, number>();
+      const colorMap = new Map<string, string | null>();
       if (data && (userRole === 'admin' || userRole === 'supervisor')) {
         const uniqueUserIds = [...new Set(data.map((entry: any) => entry.user_id))];
         const { data: profilesData } = await supabase
           .from('profiles')
-          .select('id, rate')
+          .select('id, rate, chart_color, full_name')
           .in('id', uniqueUserIds);
         
         profilesData?.forEach(profile => {
           rateMap.set(profile.id, profile.rate || 0);
+          colorMap.set(profile.full_name, profile.chart_color);
         });
       } else if (data && user) {
-        // For regular employees, just get their own rate
+        // For regular employees, just get their own rate and color
         const { data: profileData } = await supabase
           .from('profiles')
-          .select('rate')
+          .select('rate, chart_color, full_name')
           .eq('id', user.id)
           .single();
         
         if (profileData) {
           rateMap.set(user.id, profileData.rate || 0);
+          colorMap.set(profileData.full_name, profileData.chart_color);
         }
       }
 
-      // Add rates to entries
+      // Add rates and chart colors to entries
       const entriesWithRate = (data || []).map((entry: any) => ({
         ...entry,
-        rate: rateMap.get(entry.user_id) || 0
+        rate: rateMap.get(entry.user_id) || 0,
+        chart_color: colorMap.get(entry.full_name)
       }));
 
       setEntries(entriesWithRate);

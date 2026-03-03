@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Shield, Save, Search, ChevronDown, Calendar, Clock, MapPin, DollarSign, User, Filter, Edit2, X, Check, Download, Plus, UserPlus, Key, Trash2, Camera } from 'lucide-react';
+import { Shield, Save, Search, ChevronDown, Calendar, Clock, MapPin, DollarSign, User, Filter, Edit2, X, Check, Download, Plus, UserPlus, Key, Trash2, Camera, Palette } from 'lucide-react';
 import { supabase, getUserRole } from '../lib/supabase';
 import { ProfilePictureUploader } from './ProfilePictureUploader';
 import { ProfileAvatar } from './ProfileAvatar';
 import toast from 'react-hot-toast';
 import { format, parseISO, differenceInMinutes, subDays } from 'date-fns';
 import { useAudioFeedback } from '../lib/useAudioFeedback';
+import { distinctColors, hslToHex, isValidHexColor } from '../lib/colorUtils';
 
 interface TimeEntry {
   id: string;
@@ -35,6 +36,7 @@ interface UserProfile {
     offsetX: number;
     offsetY: number;
   } | null;
+  chart_color?: string | null;
 }
 
 interface CreateUserForm {
@@ -90,8 +92,10 @@ function AdminPage() {
   const [resetPasswordUserId, setResetPasswordUserId] = useState<string | null>(null);
   const [isResettingPassword, setIsResettingPassword] = useState(false);
   const [rateEditValues, setRateEditValues] = useState<{ [key: string]: string }>({});
+  const [colorEditValues, setColorEditValues] = useState<{ [key: string]: string }>({});
   const [pictureTimestamps, setPictureTimestamps] = useState<{ [key: string]: number }>({});
   const [editingProfilePicture, setEditingProfilePicture] = useState<UserProfile | null>(null);
+  const [isAssigningColors, setIsAssigningColors] = useState(false);
 
   useEffect(() => {
     checkAdminStatus();
@@ -193,7 +197,7 @@ function AdminPage() {
       // Fetch profiles with RLS policies handling the access control
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, full_name, role, email, rate, profile_picture_url, picture_metadata')
+        .select('id, full_name, role, email, rate, profile_picture_url, picture_metadata, chart_color')
         .order('full_name');
 
       if (error) throw error;
@@ -490,6 +494,81 @@ function AdminPage() {
     }
   };
 
+  const updateUserColor = async (userId: string, newColor: string | null) => {
+    try {
+      setIsSaving(true);
+      const { error } = await supabase
+        .from('profiles')
+        .update({ chart_color: newColor })
+        .eq('id', userId);
+
+      if (error) throw error;
+
+      setUsers(users.map(user => 
+        user.id === userId ? { ...user, chart_color: newColor } : user
+      ));
+
+      toast.success(newColor ? 'Chart color updated' : 'Chart color reset to auto-generated');
+    } catch (error) {
+      console.error('Error updating user color:', error);
+      toast.error('Failed to update user color');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const bulkAssignColors = async () => {
+    if (!window.confirm(
+      'Auto-assign distinct colors to all users without custom colors? '
+      + 'This will assign colors from the predefined color palette in alphabetical order by name.'
+    )) {
+      return;
+    }
+
+    try {
+      setIsAssigningColors(true);
+      
+      // Get users with NULL chart_color, sorted alphabetically
+      const usersWithoutColor = users
+        .filter(u => !u.chart_color)
+        .sort((a, b) => a.full_name.localeCompare(b.full_name));
+
+      if (usersWithoutColor.length === 0) {
+        toast.error('All users already have custom colors assigned');
+        return;
+      }
+
+      // Assign colors from distinctColors array converted to hex
+      const updates = usersWithoutColor.map((user, index) => {
+        const hslColor = distinctColors[index % distinctColors.length];
+        const hexColor = hslToHex(hslColor);
+        return supabase
+          .from('profiles')
+          .update({ chart_color: hexColor })
+          .eq('id', user.id);
+      });
+
+      // Execute all updates
+      const results = await Promise.all(updates);
+      
+      // Check for errors
+      const errors = results.filter(r => r.error);
+      if (errors.length > 0) {
+        throw new Error(`Failed to update ${errors.length} users`);
+      }
+
+      // Refresh users list
+      await fetchUsers();
+      
+      toast.success(`Successfully assigned colors to ${usersWithoutColor.length} users`);
+    } catch (error) {
+      console.error('Error bulk assigning colors:', error);
+      toast.error('Failed to assign colors to all users');
+    } finally {
+      setIsAssigningColors(false);
+    }
+  };
+
   const handleRateInputChange = (userId: string, value: string) => {
     setRateEditValues(prev => ({
       ...prev,
@@ -508,6 +587,40 @@ function AdminPage() {
         return newValues;
       });
     }
+  };
+
+  const handleColorInputChange = (userId: string, value: string) => {
+    setColorEditValues(prev => ({
+      ...prev,
+      [userId]: value
+    }));
+  };
+
+  const handleColorSave = (userId: string) => {
+    const value = colorEditValues[userId];
+    if (value !== undefined) {
+      // Validate hex color format
+      if (value && !isValidHexColor(value)) {
+        toast.error('Invalid hex color format. Use #RRGGBB format (e.g., #FF5733)');
+        playErrorSound('random');
+        return;
+      }
+      updateUserColor(userId, value || null);
+      setColorEditValues(prev => {
+        const newValues = { ...prev };
+        delete newValues[userId];
+        return newValues;
+      });
+    }
+  };
+
+  const handleColorClear = (userId: string) => {
+    updateUserColor(userId, null);
+    setColorEditValues(prev => {
+      const newValues = { ...prev };
+      delete newValues[userId];
+      return newValues;
+    });
   };
 
   const startEditing = (entry: TimeEntry) => {
@@ -662,6 +775,26 @@ function AdminPage() {
 
           {/* Navigation and Actions */}
           <div className="flex items-center gap-3">
+            {/* Auto-Assign Colors Button (only in users view) */}
+            {activeView === 'users' && (
+              <button
+                onClick={bulkAssignColors}
+                disabled={isAssigningColors}
+                className="flex items-center px-3 py-2 rounded-lg bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50"
+              >
+                {isAssigningColors ? (
+                  <>
+                    <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full mr-2"></div>
+                    Assigning...
+                  </>
+                ) : (
+                  <>
+                    <Palette className="h-4 w-4 mr-2" />
+                    Auto-Assign Colors
+                  </>
+                )}
+              </button>
+            )}
             {/* View Navigation */}
             <div className="flex bg-gray-100 rounded-lg p-1">
               <button
@@ -916,6 +1049,9 @@ function AdminPage() {
                   Hourly Rate
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Chart Color
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Actions
                 </th>
               </tr>
@@ -959,6 +1095,46 @@ function AdminPage() {
                       >
                         <Save className="h-4 w-4" />
                       </button>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="text"
+                          placeholder="#FF5733"
+                          value={colorEditValues[user.id] !== undefined ? colorEditValues[user.id] : (user.chart_color || '')}
+                          onChange={(e) => handleColorInputChange(user.id, e.target.value.toUpperCase())}
+                          className="w-24 px-2 py-1 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-mono"
+                        />
+                        {(colorEditValues[user.id] !== undefined ? colorEditValues[user.id] : user.chart_color) && (
+                          <div
+                            className="w-8 h-8 rounded border-2 border-gray-300"
+                            style={{ backgroundColor: colorEditValues[user.id] !== undefined ? colorEditValues[user.id] : (user.chart_color || '') }}
+                            title={colorEditValues[user.id] !== undefined ? colorEditValues[user.id] : (user.chart_color || '')}
+                          />
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => handleColorSave(user.id)}
+                          disabled={isSaving}
+                          className="p-1 text-blue-600 hover:text-blue-800 disabled:opacity-50"
+                          title="Save Color"
+                        >
+                          <Save className="h-4 w-4" />
+                        </button>
+                        {user.chart_color && (
+                          <button
+                            onClick={() => handleColorClear(user.id)}
+                            disabled={isSaving}
+                            className="p-1 text-gray-600 hover:text-gray-800 disabled:opacity-50"
+                            title="Clear Color (use auto-generated)"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
