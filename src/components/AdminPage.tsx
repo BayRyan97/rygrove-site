@@ -596,6 +596,13 @@ function AdminPage() {
     }));
   };
 
+  const handleColorPickerChange = (userId: string, value: string) => {
+    setColorEditValues(prev => ({
+      ...prev,
+      [userId]: value.toUpperCase()
+    }));
+  };
+
   const handleColorSave = (userId: string) => {
     const value = colorEditValues[userId];
     if (value !== undefined) {
@@ -1100,6 +1107,17 @@ function AdminPage() {
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center gap-2">
                       <div className="flex items-center gap-1">
+                        <input
+                          type="color"
+                          value={
+                            isValidHexColor(colorEditValues[user.id] !== undefined ? colorEditValues[user.id] : (user.chart_color || ''))
+                              ? (colorEditValues[user.id] !== undefined ? colorEditValues[user.id] : (user.chart_color || ''))
+                              : '#3B82F6'
+                          }
+                          onChange={(e) => handleColorPickerChange(user.id, e.target.value)}
+                          className="w-10 h-8 p-0 border border-gray-300 rounded cursor-pointer"
+                          title="Pick Color"
+                        />
                         <input
                           type="text"
                           placeholder="#FF5733"
