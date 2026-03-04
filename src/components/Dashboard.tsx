@@ -35,6 +35,7 @@ interface MenuItem {
   label: string;
   icon: React.ElementType;
   show: boolean;
+  group: 'core' | 'tools' | 'admin';
 }
 
 export function Dashboard({ user }: DashboardProps) {
@@ -51,53 +52,64 @@ export function Dashboard({ user }: DashboardProps) {
   const userDropdownRef = useRef<HTMLDivElement>(null);
 
   const menuItems: MenuItem[] = [
+    // Core Features
     {
       id: 'view-activity',
       label: 'Activity Dashboard',
       icon: Eye,
-      show: true
-    },
-    {
-      id: 'admin',
-      label: 'Admin Dashboard',
-      icon: Shield,
-      show: isAdmin
-    },
-    {
-      id: 'create-invoice',
-      label: 'Create Invoice',
-      icon: FileSpreadsheet,
-      show: true
-    },
-    {
-      id: 'estimate-worksheet',
-      label: 'Estimate Worksheet',
-      icon: Calculator,
-      show: true
-    },
-    {
-      id: 'expenses',
-      label: 'Expense Management',
-      icon: DollarSign,
-      show: true
-    },
-    {
-      id: 'landing',
-      label: 'Landing Page',
-      icon: Home,
-      show: true
-    },
-    {
-      id: 'planner',
-      label: 'Project Planner',
-      icon: FolderKanban,
-      show: true
+      show: true,
+      group: 'core'
     },
     {
       id: 'enter-activity',
       label: 'Time Management',
       icon: Calendar,
-      show: true
+      show: true,
+      group: 'core'
+    },
+    {
+      id: 'estimate-worksheet',
+      label: 'Estimate Worksheet',
+      icon: Calculator,
+      show: true,
+      group: 'core'
+    },
+    // Tools
+    {
+      id: 'create-invoice',
+      label: 'Create Invoice',
+      icon: FileSpreadsheet,
+      show: true,
+      group: 'tools'
+    },
+    {
+      id: 'expenses',
+      label: 'Expense Management',
+      icon: DollarSign,
+      show: true,
+      group: 'tools'
+    },
+    {
+      id: 'planner',
+      label: 'Project Planner',
+      icon: FolderKanban,
+      show: true,
+      group: 'tools'
+    },
+    // Admin
+    {
+      id: 'admin',
+      label: 'Admin Dashboard',
+      icon: Shield,
+      show: isAdmin,
+      group: 'admin'
+    },
+    {
+      id: 'landing',
+      label: 'Landing Page',
+      icon: Home,
+      show: true,
+      group: 'admin'
     }
   ];
 
@@ -174,27 +186,60 @@ export function Dashboard({ user }: DashboardProps) {
                   <ChevronDown className={`h-4 w-4 transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} />
                 </button>
                 {isDropdownOpen && (
-                  <div className="absolute top-full left-0 mt-1 w-48 bg-white rounded-xl shadow-xl border border-gray-200 py-1">
-                    {menuItems.filter(item => item.show).map(item => {
-                      const Icon = item.icon;
+                  <div className="absolute top-full left-0 mt-1 w-52 bg-white rounded-xl shadow-xl border border-gray-200 py-2">
+                    {(() => {
+                      const visibleItems = menuItems.filter(item => item.show);
+                      const coreItems = visibleItems.filter(item => item.group === 'core');
+                      const toolItems = visibleItems.filter(item => item.group === 'tools');
+                      const adminItems = visibleItems.filter(item => item.group === 'admin');
+
+                      const renderGroup = (items: MenuItem[], groupLabel?: string) => {
+                        if (items.length === 0) return null;
+                        return (
+                          <div key={groupLabel || 'default'}>
+                            {groupLabel && (
+                              <div className="px-4 py-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                                {groupLabel}
+                              </div>
+                            )}
+                            {items.map(item => {
+                              const Icon = item.icon;
+                              return (
+                                <button
+                                  key={item.id}
+                                  onClick={() => {
+                                    navigate('/' + item.id);
+                                    setIsDropdownOpen(false);
+                                  }}
+                                  className={`w-full flex items-center space-x-2 px-4 py-2 text-sm whitespace-nowrap ${
+                                    activeTab === item.id 
+                                      ? 'bg-blue-50 text-blue-600' 
+                                      : 'text-gray-600 hover:bg-gray-50'
+                                  }`}
+                                >
+                                  <Icon className="h-4 w-4 shrink-0" />
+                                  <span>{item.label}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        );
+                      };
+
                       return (
-                        <button
-                          key={item.id}
-                          onClick={() => {
-                            navigate('/' + item.id);
-                            setIsDropdownOpen(false);
-                          }}
-                          className={`w-full flex items-center space-x-2 px-4 py-2 text-sm whitespace-nowrap ${
-                            activeTab === item.id 
-                              ? 'bg-blue-50 text-blue-600' 
-                              : 'text-gray-600 hover:bg-gray-50'
-                          }`}
-                        >
-                          <Icon className="h-4 w-4 shrink-0" />
-                          <span>{item.label}</span>
-                        </button>
+                        <>
+                          {renderGroup(coreItems)}
+                          {toolItems.length > 0 && coreItems.length > 0 && (
+                            <div className="my-1 border-t border-gray-200" />
+                          )}
+                          {renderGroup(toolItems, 'Tools')}
+                          {adminItems.length > 0 && (toolItems.length > 0 || coreItems.length > 0) && (
+                            <div className="my-1 border-t border-gray-200" />
+                          )}
+                          {renderGroup(adminItems, 'Admin')}
+                        </>
                       );
-                    })}
+                    })()}
                   </div>
                 )}
               </div>
