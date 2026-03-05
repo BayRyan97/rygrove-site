@@ -41,6 +41,9 @@ A comprehensive full-stack web application for managing employee time entries, e
 - **User Management**: Create and manage employee accounts with role assignment (admin/supervisor/employee)
 - **Role-Based Access**: Three-tier role system with granular permissions enforced via RLS
 - **Profile Picture Management**: Upload and customize profile pictures for any user with zoom/pan controls
+- **Chart Color Customization**: Assign custom hex colors to each user for activity dashboard charts
+- **Native Color Picker**: Visual color selection with live preview and hex input
+- **Bulk Color Assignment**: Auto-assign distinct colors to all users alphabetically with one click
 - **Hourly Rate Management**: Set and track hourly rates for each employee
 - **Labor Cost Calculation**: Automatic calculation of labor costs based on hours × rate
 - **Time Entry Oversight**: View, edit, and delete time entries for all employees
@@ -69,10 +72,12 @@ A comprehensive full-stack web application for managing employee time entries, e
 - **Secure Storage**: Images stored in Supabase storage bucket with proper access controls
 - **Dashboard Display**: Profile pictures appear in navigation header and user lists
 
-### �📈 Dashboard & Analytics
+### 📈 Dashboard & Analytics
 - **Real-time Statistics**: Widgets showing hours worked, expenses, and activity summaries
 - **Visual Analytics**: Interactive Chart.js-powered charts for time and expense trends
 - **Stacked Bar Chart**: Daily hours broken down by employee with unique color coding
+- **Custom Chart Colors**: Each employee has a unique, customizable color in charts (set via Admin Dashboard)
+- **Intelligent Color Fallback**: Auto-generated colors for users without custom colors assigned
 - **Pie Chart**: Hours distribution across job locations with percentages
 - **Interactive Tooltips**: Hover to see location details and exact hours
 - **Chart Toggle**: Switch between bar and pie visualizations
@@ -80,6 +85,8 @@ A comprehensive full-stack web application for managing employee time entries, e
 - **Quick Date Ranges**: Preset filters for week, month, quarter, 6 months, year, or custom range
 - **Performance Insights**: Track individual and team performance metrics
 - **Employee Insights**: Detailed breakdown of work patterns and expense distributions
+- **Audio Feedback**: Success and error sounds for form submissions and validation failures
+- **Organized Navigation**: Grouped dropdown menu with Core, Tools, and Admin sections
 
 ## 🛠️ Tech Stack
 
@@ -103,6 +110,7 @@ A comprehensive full-stack web application for managing employee time entries, e
 - **Excel Export**: xlsx
 - **PDF Generation**: jspdf with jspdf-autotable
 - **Drag & Drop**: Native HTML5 Drag and Drop API
+- **Audio Feedback**: HTML5 Audio API with MP3 support
 - **Linting**: ESLint with TypeScript support
 
 ## ⚡ Quick Start
@@ -581,7 +589,15 @@ All employee permissions plus:
 
 ## 📊 Recent Updates & Fixes
 
-### February 2026 (Latest)
+### March 2026 (Latest)
+- ✅ **Custom Chart Colors** - Per-user hex color codes for activity dashboard charts with visual editor
+- ✅ **Native Color Picker** - Built-in color picker with hex input and live preview swatch
+- ✅ **Bulk Color Assignment** - Auto-assign distinct colors to all users with one click
+- ✅ **Audio Feedback System** - Error and success sounds for validation and form submissions
+- ✅ **Grouped Navigation Menu** - Organized dropdown with Core/Tools/Admin sections and visual dividers
+- ✅ **Chart Color Management** - Admin dashboard UI for setting and clearing user chart colors
+
+### February 2026
 - ✅ **Client-Facing Landing Page** - Professional homepage with hamburger menu and authentication state
 - ✅ **Enhanced Invoice Management** - Markup controls, hourly rate overrides, and improved UX
 - ✅ **Professional Estimate PDFs** - Client-ready PDF exports with proper formatting and address display
@@ -657,6 +673,8 @@ Set these in your hosting platform:
 ## 📁 Project Structure
 
 ```
+├── public/
+│   └── audio/                # Audio feedback files (MP3)
 ├── src/
 │   ├── components/           # React components
 │   │   ├── AdminPage.tsx     # Admin dashboard
@@ -668,7 +686,9 @@ Set these in your hosting platform:
 │   │   ├── ViewActivityPage.tsx
 │   │   └── Dashboard.tsx     # Main dashboard
 │   ├── lib/
-│   │   └── supabase.ts       # Supabase client config
+│   │   ├── supabase.ts       # Supabase client config
+│   │   ├── colorUtils.ts     # Chart color utilities
+│   │   └── useAudioFeedback.ts  # Audio feedback hook
 │   ├── App.tsx               # Main app component
 │   ├── main.tsx              # Entry point
 │   └── index.css             # Global styles
