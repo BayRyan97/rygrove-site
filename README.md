@@ -1,5 +1,7 @@
 # Employee Time Tracking & Project Management System
 
+> Last updated: March 5, 2026
+
 A comprehensive full-stack web application for managing employee time entries, expenses, invoices, project planning, and estimates. Built with React 18, TypeScript, Vite, and Supabase for small businesses and contractors.
 
 ## 🎯 Features Overview
