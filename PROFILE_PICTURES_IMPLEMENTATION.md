@@ -156,8 +156,8 @@ This allows:
 - **offsetX/offsetY**: Centers image within container (negative values shift left/up)
 
 ### Component Sizes
-- **Dashboard header:** 8x8px (h-8 w-8) thumbnail
-- **Admin table:** 8x8px thumbnail with user icon fallback
+- **Dashboard header:** 32x32px (h-8 w-8) thumbnail
+- **Admin table:** 32x32px thumbnail with user icon fallback
 - **Upload editor:** Full container (aspect-square) for preview
 
 ## Security Considerations

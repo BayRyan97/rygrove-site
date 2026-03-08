@@ -125,7 +125,7 @@ npm install
 
 # 2. Set environment variables
 echo "VITE_SUPABASE_URL=your_url" > .env
-echo "VITE_SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY_HERE
+echo "VITE_SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY_HERE" >> .env
 
 # 3. Start development server
 npm run dev
