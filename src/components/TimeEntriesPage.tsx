@@ -251,6 +251,16 @@ export function TimeEntriesPage() {
 
     // Validate all required fields
     for (const entry of entries) {
+      // Validate date
+      if (!entry.date || entry.date.trim() === '') {
+        playErrorSound('random');
+        console.error('❌ Validation Error: Please enter a date for every time entry.');
+        setTimeout(() => {
+          alert('Please enter a date for every time entry.');
+        }, 100);
+        return;
+      }
+
       // Validate employee/name selection (required for admins/supervisors)
       if ((isAdmin || isSupervisor) && !entry.user_id) {
         playErrorSound('random');
@@ -271,6 +281,26 @@ export function TimeEntriesPage() {
         return;
       }
 
+      // Validate start and end times for partial days
+      if (!entry.is_full_day) {
+        if (!entry.start_time || entry.start_time.trim() === '') {
+          playErrorSound('random');
+          console.error('❌ Validation Error: Please enter a start time for every partial day entry.');
+          setTimeout(() => {
+            alert('Please enter a start time for every partial day entry.');
+          }, 100);
+          return;
+        }
+        if (!entry.end_time || entry.end_time.trim() === '') {
+          playErrorSound('random');
+          console.error('❌ Validation Error: Please enter an end time for every partial day entry.');
+          setTimeout(() => {
+            alert('Please enter an end time for every partial day entry.');
+          }, 100);
+          return;
+        }
+      }
+
       // Validate work_type selection: at least one must be selected per entry
       if (!entry.work_type || entry.work_type.length === 0) {
         // Play sound immediately and log error
@@ -285,6 +315,38 @@ export function TimeEntriesPage() {
       if (entry.work_type.includes('Other')) {
         // Default to 'Other' if the free text box is empty
         entry.work_type_other = entry.work_type_other?.trim() || 'Other';
+      }
+
+      // Validate expenses
+      for (let i = 0; i < entry.expenses.length; i++) {
+        const expense = entry.expenses[i];
+        
+        if (!expense.amount || expense.amount <= 0) {
+          playErrorSound('random');
+          console.error('❌ Validation Error: Please enter a valid amount for all expenses.');
+          setTimeout(() => {
+            alert('Please enter a valid amount for all expenses.');
+          }, 100);
+          return;
+        }
+
+        if (!expense.retailer_name || expense.retailer_name.trim() === '') {
+          playErrorSound('random');
+          console.error('❌ Validation Error: Please enter a retailer for all expenses.');
+          setTimeout(() => {
+            alert('Please enter a retailer for all expenses.');
+          }, 100);
+          return;
+        }
+
+        if (!expense.description || expense.description.trim() === '') {
+          playErrorSound('random');
+          console.error('❌ Validation Error: Please enter a description for all expenses.');
+          setTimeout(() => {
+            alert('Please enter a description for all expenses.');
+          }, 100);
+          return;
+        }
       }
     }
 
@@ -687,7 +749,6 @@ export function TimeEntriesPage() {
                       setEntries(newEntries);
                     }}
                     className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                    required
                   />
                 </div>
 
@@ -786,7 +847,6 @@ export function TimeEntriesPage() {
                           setEntries(newEntries);
                         }}
                         className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                        required
                       />
                     </div>
 
@@ -801,7 +861,6 @@ export function TimeEntriesPage() {
                           setEntries(newEntries);
                         }}
                         className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                        required
                       />
                     </div>
                   </>
@@ -958,7 +1017,6 @@ export function TimeEntriesPage() {
                             onChange={(e) => updateExpense(entryIndex, expenseIndex, { amount: parseFloat(e.target.value) })}
                             className="w-full pl-8 pr-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                             placeholder="0.00"
-                            required
                           />
                         </div>
                       </div>
@@ -1003,7 +1061,6 @@ export function TimeEntriesPage() {
                             }}
                             className="w-full pl-8 pr-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                             placeholder="Enter or select retailer"
-                            required
                           />
                           {activeRetailerDropdownIndex?.entry === entryIndex &&
                            activeRetailerDropdownIndex?.expense === expenseIndex && (
@@ -1042,7 +1099,6 @@ export function TimeEntriesPage() {
                           onChange={(e) => updateExpense(entryIndex, expenseIndex, { description: e.target.value })}
                           className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                           placeholder="Enter expense description"
-                          required
                         />
                       </div>
 
