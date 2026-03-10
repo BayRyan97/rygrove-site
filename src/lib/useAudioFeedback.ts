@@ -6,6 +6,9 @@ type SuccessType = 'general';
 /**
  * Custom hook to play audio feedback on errors and success events
  * Supports different sounds for different event types
+ * 
+ * Usage: Call playErrorSound() immediately when validation/errors occur,
+ * then delay alert() by ~100ms to ensure audio plays before dialog blocks UI
  */
 export const useAudioFeedback = () => {
   const playErrorSound = useCallback((errorType: ErrorType = 'random') => {
