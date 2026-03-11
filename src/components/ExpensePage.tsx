@@ -34,7 +34,6 @@ export function ExpensePage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showLocationDropdown, setShowLocationDropdown] = useState<number | null>(null);
   const [showRetailerDropdown, setShowRetailerDropdown] = useState<number | null>(null);
-  const [locationSearchTerm, setLocationSearchTerm] = useState('');
   const [userId, setUserId] = useState<string | null>(null);
   const locationDropdownRef = useRef<HTMLDivElement>(null);
   const retailerDropdownRef = useRef<HTMLDivElement>(null);
@@ -269,10 +268,6 @@ export function ExpensePage() {
     }
   };
 
-  const filteredLocations = locations.filter(location =>
-    location.toLowerCase().includes(locationSearchTerm.toLowerCase())
-  );
-
   return (
     <div className="space-y-6">
       <h2 className="text-2xl font-semibold text-gray-800">Expense Management</h2>
@@ -342,8 +337,8 @@ export function ExpensePage() {
                     onChange={(e) => {
                       const newExpenses = [...expenses];
                       newExpenses[index].location = e.target.value;
-                      setLocationSearchTerm(e.target.value);
                       setExpenses(newExpenses);
+                      setShowLocationDropdown(index);
                     }}
                     onClick={() => setShowLocationDropdown(index)}
                     className="w-full pl-8 pr-10 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
@@ -355,9 +350,9 @@ export function ExpensePage() {
                     size={16}
                     onClick={() => setShowLocationDropdown(index)}
                   />
-                  {showLocationDropdown === index && filteredLocations.length > 0 && (
+                  {showLocationDropdown === index && locations.filter(loc => loc.toLowerCase().includes(expense.location.toLowerCase())).length > 0 && (
                     <div className="absolute z-10 w-full mt-1 bg-white rounded-lg shadow-lg border border-gray-200 max-h-60 overflow-y-auto">
-                      {filteredLocations.map((location) => (
+                      {locations.filter(loc => loc.toLowerCase().includes(expense.location.toLowerCase())).map((location) => (
                         <button
                           key={location}
                           type="button"
@@ -366,7 +361,6 @@ export function ExpensePage() {
                             newExpenses[index].location = location;
                             setExpenses(newExpenses);
                             setShowLocationDropdown(null);
-                            setLocationSearchTerm('');
                           }}
                           className="w-full px-4 py-2 text-left hover:bg-gray-50"
                         >
@@ -389,15 +383,16 @@ export function ExpensePage() {
                       const newExpenses = [...expenses];
                       newExpenses[index].retailer_name = e.target.value;
                       setExpenses(newExpenses);
+                      setShowRetailerDropdown(index);
                     }}
                     onClick={() => setShowRetailerDropdown(index)}
                     className="w-full pl-8 pr-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                     placeholder="Enter or select retailer"
                     required
                   />
-                  {showRetailerDropdown === index && (
+                  {showRetailerDropdown === index && retailers.filter(r => r.name.toLowerCase().includes((expense.retailer_name || '').toLowerCase())).length > 0 && (
                     <div className="absolute z-10 w-full mt-1 bg-white rounded-lg shadow-lg border border-gray-200 max-h-60 overflow-y-auto">
-                      {retailers.map((retailer) => (
+                      {retailers.filter(r => r.name.toLowerCase().includes((expense.retailer_name || '').toLowerCase())).map((retailer) => (
                         <button
                           key={retailer.id}
                           type="button"
