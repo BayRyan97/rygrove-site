@@ -1797,12 +1797,11 @@ export function ViewActivityPage() {
                                                             <p className="text-xs text-gray-900">{expense.description}</p>
                                                             {expense.receipt_url && (
                                                               <a
-                                                                href={expense.receipt_url}
-                                                                target="_blank"
-                                                                rel="noopener noreferrer"
+                                                                href={expense.receipt_url.trim()}
+                                                                download
                                                                 className="text-xs text-blue-600 hover:text-blue-800"
                                                               >
-                                                                View Receipt
+                                                                Download Receipt
                                                               </a>
                                                             )}
                                                           </div>
@@ -2051,12 +2050,11 @@ export function ViewActivityPage() {
                               <p className="text-xs text-gray-900">{expense.description}</p>
                               {expense.receipt_url && (
                                 <a
-                                  href={expense.receipt_url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
+                                  href={expense.receipt_url.trim()}
+                                  download
                                   className="text-xs text-blue-600 hover:text-blue-800"
                                 >
-                                  View Receipt
+                                  Download Receipt
                                 </a>
                               )}
                             </div>
@@ -2147,12 +2145,11 @@ export function ViewActivityPage() {
                               <p className="text-sm font-medium text-gray-900">{expense.description}</p>
                               {expense.receipt_url ? (
                                 <a
-                                  href={expense.receipt_url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
+                                  href={expense.receipt_url.trim()}
+                                  download
                                   className="text-sm text-blue-600 hover:text-blue-800 hover:underline inline-flex items-center gap-1 mt-1"
                                 >
-                                  View Receipt →
+                                  Download Receipt →
                                 </a>
                               ) : (
                                 <p className="text-xs text-gray-400 mt-1">No receipt attached</p>
