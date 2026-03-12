@@ -262,6 +262,7 @@ export function CreateInvoicePage() {
               name
             )
           `)
+          .is('time_entry_id', null)
           .eq('location', selectedLocation)
           .gte('date', startDate)
           .lte('date', endDate)
@@ -275,6 +276,7 @@ export function CreateInvoicePage() {
         const result = await supabase
           .from('expenses')
           .select('id, date, amount, description, location, receipt_url, retailer_id')
+          .is('time_entry_id', null)
           .eq('location', selectedLocation)
           .gte('date', startDate)
           .lte('date', endDate)

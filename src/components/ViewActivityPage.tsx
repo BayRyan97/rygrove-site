@@ -42,6 +42,7 @@ interface TimeEntry {
   work_type_other?: string | null;
   rate?: number | null;
   chart_color?: string | null;
+  is_expense_only?: boolean;
   expenses: {
     amount: number;
     description: string;
@@ -56,6 +57,9 @@ interface ActivitySummary {
 }
 
 const calculateDuration = (start: string, end: string, lunchBreak: string | null) => {
+  // If no start/end time, it's an expense-only entry
+  if (!start || !end) return 0;
+  
   const startTime = parseISO(`2000-01-01T${start}`);
   const endTime = parseISO(`2000-01-01T${end}`);
   let minutes = differenceInMinutes(endTime, startTime);
@@ -687,21 +691,65 @@ export function ViewActivityPage() {
       const { data, error } = await query;
       if (error) throw error;
 
+      // Fetch standalone expenses (expenses without time_entry_id)
+      let standaloneExpensesQuery = supabase
+        .from('expenses')
+        .select(`
+          id,
+          date,
+          amount,
+          description,
+          location,
+          receipt_url,
+          receipt_image_url,
+          user_id,
+          retailer_id,
+          retailers (name)
+        `)
+        .is('time_entry_id', null)
+        .gte('date', startDate)
+        .lte('date', endDate)
+        .order('date', { ascending: false });
+
+      if (location) {
+        standaloneExpensesQuery = standaloneExpensesQuery.eq('location', location);
+      }
+
+      // Filter by user_id for regular employees
+      if (userRole !== 'admin' && userRole !== 'supervisor' && user) {
+        standaloneExpensesQuery = standaloneExpensesQuery.eq('user_id', user.id);
+      }
+
+      const { data: standaloneExpenses, error: standaloneError } = await standaloneExpensesQuery;
+      if (standaloneError) {
+        console.error('Error fetching standalone expenses:', standaloneError);
+        throw standaloneError;
+      }
+
       // Fetch rates and chart colors for all unique user_ids if admin/supervisor
       const rateMap = new Map<string, number>();
       const colorMap = new Map<string, string | null>();
-      if (data && (userRole === 'admin' || userRole === 'supervisor')) {
-        const uniqueUserIds = [...new Set(data.map((entry: any) => entry.user_id))];
+      const nameMap = new Map<string, string>();
+      
+      const allUserIds = [
+        ...new Set([
+          ...(data || []).map((entry: any) => entry.user_id),
+          ...(standaloneExpenses || []).map((exp: any) => exp.user_id)
+        ])
+      ];
+
+      if (allUserIds.length > 0 && (userRole === 'admin' || userRole === 'supervisor')) {
         const { data: profilesData } = await supabase
           .from('profiles')
           .select('id, rate, chart_color, full_name')
-          .in('id', uniqueUserIds);
+          .in('id', allUserIds);
         
         profilesData?.forEach(profile => {
           rateMap.set(profile.id, profile.rate || 0);
           colorMap.set(profile.full_name, profile.chart_color);
+          nameMap.set(profile.id, profile.full_name);
         });
-      } else if (data && user) {
+      } else if (user) {
         // For regular employees, just get their own rate and color
         const { data: profileData } = await supabase
           .from('profiles')
@@ -712,17 +760,55 @@ export function ViewActivityPage() {
         if (profileData) {
           rateMap.set(user.id, profileData.rate || 0);
           colorMap.set(profileData.full_name, profileData.chart_color);
+          nameMap.set(user.id, profileData.full_name);
         }
       }
 
-      // Add rates and chart colors to entries
+      // Add rates and chart colors to time entries
       const entriesWithRate = (data || []).map((entry: any) => ({
         ...entry,
         rate: rateMap.get(entry.user_id) || 0,
         chart_color: colorMap.get(entry.full_name)
       }));
 
-      setEntries(entriesWithRate);
+      // Convert standalone expenses to pseudo time entries for display
+      const pseudoEntriesFromExpenses = (standaloneExpenses || [])
+        .filter((exp: any) => {
+          // Apply person filter if set
+          if (selectedPersons.length > 0) {
+            const fullName = nameMap.get(exp.user_id);
+            return fullName && selectedPersons.includes(fullName);
+          }
+          return true;
+        })
+        .map((exp: any) => ({
+          id: `expense-${exp.id}`,
+          date: exp.date,
+          start_time: '',
+          end_time: '',
+          location: exp.location,
+          lunch_break: null,
+          notes: null,
+          created_at: exp.date,
+          user_id: exp.user_id,
+          full_name: nameMap.get(exp.user_id) || 'Unknown User',
+          is_full_day: false,
+          work_type: null,
+          work_type_other: null,
+          rate: rateMap.get(exp.user_id) || 0,
+          chart_color: colorMap.get(nameMap.get(exp.user_id) || ''),
+          expenses: [{
+            amount: exp.amount,
+            description: exp.description,
+            receipt_url: exp.receipt_url || exp.receipt_image_url
+          }],
+          is_expense_only: true // Flag to identify standalone expenses
+        }));
+
+      // Combine time entries with standalone expenses
+      const allEntries = [...entriesWithRate, ...pseudoEntriesFromExpenses];
+
+      setEntries(allEntries);
     } catch (error) {
       console.error('Error fetching entries:', error);
       alert('Failed to fetch entries.');
@@ -1652,17 +1738,25 @@ export function ViewActivityPage() {
                                                 </div>
                                                 <div className="flex items-start gap-3">
                                                   <div className="text-right">
-                                                    <p className="text-sm font-medium text-gray-900">
-                                                      {entry.start_time} - {entry.end_time}
-                                                    </p>
-                                                    {entry.lunch_break && (
-                                                      <p className="text-xs text-gray-500">
-                                                        Lunch Break: {entry.lunch_break}
+                                                    {entry.is_expense_only ? (
+                                                      <p className="text-sm font-medium text-blue-600">
+                                                        Expense Only
                                                       </p>
+                                                    ) : (
+                                                      <>
+                                                        <p className="text-sm font-medium text-gray-900">
+                                                          {entry.start_time} - {entry.end_time}
+                                                        </p>
+                                                        {entry.lunch_break && (
+                                                          <p className="text-xs text-gray-500">
+                                                            Lunch Break: {entry.lunch_break}
+                                                          </p>
+                                                        )}
+                                                        <p className="text-sm font-semibold text-blue-600 mt-1">
+                                                          {formatHours(calculateDuration(entry.start_time, entry.end_time, entry.lunch_break))} hrs
+                                                        </p>
+                                                      </>
                                                     )}
-                                                    <p className="text-sm font-semibold text-blue-600 mt-1">
-                                                      {formatHours(calculateDuration(entry.start_time, entry.end_time, entry.lunch_break))} hrs
-                                                    </p>
                                                   </div>
                                                   {isAdmin && (
                                                     <div className="flex items-center gap-2">
@@ -1912,13 +2006,21 @@ export function ViewActivityPage() {
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm text-gray-700">
-                        {selectedEntry.start_time} - {selectedEntry.end_time}
-                      </p>
-                      {selectedEntry.lunch_break && (
-                        <p className="text-xs text-gray-500">
-                          Lunch Break: {selectedEntry.lunch_break}
+                      {selectedEntry.is_expense_only ? (
+                        <p className="text-lg font-medium text-blue-600">
+                          Expense Only
                         </p>
+                      ) : (
+                        <>
+                          <p className="text-sm text-gray-700">
+                            {selectedEntry.start_time} - {selectedEntry.end_time}
+                          </p>
+                          {selectedEntry.lunch_break && (
+                            <p className="text-xs text-gray-500">
+                              Lunch Break: {selectedEntry.lunch_break}
+                            </p>
+                          )}
+                        </>
                       )}
                     </div>
                     {isAdmin && (
@@ -1976,7 +2078,11 @@ export function ViewActivityPage() {
                           {entry.full_name} — {format(parseISO(entry.date), 'MMM d, yyyy')}
                         </p>
                         <p className="text-xs text-gray-500">
-                          {entry.start_time} - {entry.end_time} • {entry.location}
+                          {entry.is_expense_only ? (
+                            <span className="text-blue-600 font-medium">Expense Only</span>
+                          ) : (
+                            <>{entry.start_time} - {entry.end_time}</>
+                          )} • {entry.location}
                         </p>
                       </div>
                       {isAdmin && (

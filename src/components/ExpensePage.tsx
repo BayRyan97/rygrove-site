@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { DollarSign, Store, Upload, Search, MapPin, ChevronDown, Plus, X } from 'lucide-react';
+import { DollarSign, Store, Upload, MapPin, ChevronDown, Plus, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { format, parseISO } from 'date-fns';
+import { format } from 'date-fns';
 
 interface Expense {
   id?: string;
@@ -24,7 +24,7 @@ interface Retailer {
 export function ExpensePage() {
   const [expenses, setExpenses] = useState<Expense[]>([{
     date: format(new Date(), 'yyyy-MM-dd'),
-    amount: 0,
+    amount: '' as any,
     description: '',
     location: '',
     retailer_name: ''
@@ -140,12 +140,25 @@ export function ExpensePage() {
         throw new Error('User not authenticated. Please refresh and try again.');
       }
 
-      for (const expense of expenses) {
+      for (const [expenseIndex, expense] of expenses.entries()) {
+        const normalizedAmount = Number(expense.amount);
+        if (!Number.isFinite(normalizedAmount) || normalizedAmount <= 0) {
+          throw new Error(`Expense ${expenseIndex + 1}: Please enter a valid amount greater than 0.`);
+        }
+
+        if (!expense.location || expense.location.trim() === '') {
+          throw new Error(`Expense ${expenseIndex + 1}: Location is required.`);
+        }
+
+        if (!expense.description || expense.description.trim() === '') {
+          throw new Error(`Expense ${expenseIndex + 1}: Description is required.`);
+        }
+
         if (expense.receipt_url && expense.receipt_url.startsWith('blob:')) {
           try {
             const response = await fetch(expense.receipt_url);
             const blob = await response.blob();
-            const fileExt = blob.type.split('/')[1];
+            const fileExt = blob.type.split('/')[1] || 'jpg';
             const fileName = `${crypto.randomUUID()}.${fileExt}`;
             const filePath = `${userId}/${fileName}`;
 
@@ -162,37 +175,82 @@ export function ExpensePage() {
             expense.receipt_url = publicUrl;
             expense.receipt_image_url = publicUrl;
           } catch (uploadError) {
-            console.error('Receipt upload error:', uploadError);
+            console.error('Receipt upload error:', {
+              step: 'receipt_upload_error',
+              expenseIndex,
+              uploadError
+            });
           }
         }
 
         let retailerId = expense.retailer_id;
-        if (expense.retailer_name && !retailerId) {
-          const { data: existingRetailers } = await supabase
+        const retailerName = expense.retailer_name?.trim();
+        if (retailerName && !retailerId) {
+          const { data: existingRetailers, error: retailerLookupError } = await supabase
             .from('retailers')
             .select('id')
-            .eq('name', expense.retailer_name)
+            .eq('name', retailerName)
             .limit(1);
+
+          if (retailerLookupError) {
+            console.error('Retailer lookup error:', {
+              step: 'retailer_lookup_error',
+              expenseIndex,
+              retailerName,
+              code: retailerLookupError.code,
+              message: retailerLookupError.message,
+              details: retailerLookupError.details,
+              hint: retailerLookupError.hint
+            });
+            throw retailerLookupError;
+          }
 
           if (existingRetailers && existingRetailers.length > 0) {
             retailerId = existingRetailers[0].id;
           } else {
-            const { data: newRetailer, error: retailerError } = await supabase
+            const { data: insertedRetailer, error: retailerInsertError } = await supabase
               .from('retailers')
-              .insert({ name: expense.retailer_name })
-              .select()
+              .insert({ name: retailerName })
+              .select('id')
               .single();
 
-            if (retailerError) throw retailerError;
-            retailerId = newRetailer.id;
+            if (retailerInsertError) {
+              if (retailerInsertError.code === '23505') {
+                const { data: duplicateRetailers, error: duplicateLookupError } = await supabase
+                  .from('retailers')
+                  .select('id')
+                  .eq('name', retailerName)
+                  .limit(1);
+
+                if (duplicateLookupError || !duplicateRetailers || duplicateRetailers.length === 0) {
+                  throw duplicateLookupError || retailerInsertError;
+                }
+
+                retailerId = duplicateRetailers[0].id;
+              } else {
+                console.error('Retailer insert error:', {
+                  step: 'retailer_insert_error',
+                  expenseIndex,
+                  retailerName,
+                  code: retailerInsertError.code,
+                  message: retailerInsertError.message,
+                  details: retailerInsertError.details,
+                  hint: retailerInsertError.hint
+                });
+                throw retailerInsertError;
+              }
+            } else {
+              retailerId = insertedRetailer.id;
+            }
           }
         }
 
         const { error: expenseError } = await supabase
           .from('expenses')
           .insert({
+            user_id: userId,
             date: expense.date,
-            amount: expense.amount,
+            amount: Number(normalizedAmount.toFixed(2)),
             description: expense.description,
             location: expense.location,
             retailer_id: retailerId,
@@ -200,12 +258,31 @@ export function ExpensePage() {
             receipt_image_url: expense.receipt_image_url
           });
 
-        if (expenseError) throw expenseError;
+        if (expenseError) {
+          console.error('Expense insert error:', {
+            step: 'expense_insert_error',
+            expenseIndex,
+            payload: {
+              user_id: userId,
+              date: expense.date,
+              amount: Number(normalizedAmount.toFixed(2)),
+              description: expense.description,
+              location: expense.location,
+              retailer_id: retailerId,
+              hasReceipt: Boolean(expense.receipt_url)
+            },
+            code: expenseError.code,
+            message: expenseError.message,
+            details: expenseError.details,
+            hint: expenseError.hint
+          });
+          throw expenseError;
+        }
       }
 
       setExpenses([{
         date: format(new Date(), 'yyyy-MM-dd'),
-        amount: 0,
+        amount: '' as any,
         description: '',
         location: '',
         retailer_name: ''
@@ -214,7 +291,13 @@ export function ExpensePage() {
       alert('Expenses submitted successfully!');
     } catch (error) {
       console.error('Error submitting expenses:', error);
-      alert('Failed to submit expenses. Please try again.');
+      if (error instanceof Error) {
+        alert(error.message);
+      } else if (error && typeof error === 'object' && 'message' in error) {
+        alert(String((error as { message?: string }).message || 'Failed to submit expenses. Please try again.'));
+      } else {
+        alert('Failed to submit expenses. Please try again.');
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -247,7 +330,7 @@ export function ExpensePage() {
   const addExpense = () => {
     setExpenses([...expenses, {
       date: format(new Date(), 'yyyy-MM-dd'),
-      amount: 0,
+      amount: '' as any,
       description: '',
       location: '',
       retailer_name: ''
@@ -258,7 +341,7 @@ export function ExpensePage() {
     if (expenses.length === 1) {
       setExpenses([{
         date: format(new Date(), 'yyyy-MM-dd'),
-        amount: 0,
+        amount: '' as any,
         description: '',
         location: '',
         retailer_name: ''
@@ -317,11 +400,12 @@ export function ExpensePage() {
                     value={expense.amount}
                     onChange={(e) => {
                       const newExpenses = [...expenses];
-                      newExpenses[index].amount = parseFloat(e.target.value);
+                      newExpenses[index].amount = e.target.value as any;
                       setExpenses(newExpenses);
                     }}
-                    className="w-full pl-8 pr-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                    className="w-full pl-8 pr-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                     placeholder="0.00"
+                    inputMode="decimal"
                     required
                   />
                 </div>

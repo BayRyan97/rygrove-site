@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Plus, RefreshCw, MapPin, ChevronDown, DollarSign, User, Store, Upload, Trash2, X, Copy } from 'lucide-react';
-import { supabase, getUserRole } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
 import { format, parseISO, differenceInMinutes, addDays } from 'date-fns';
 import { useAudioFeedback } from '../lib/useAudioFeedback';
 
@@ -55,7 +55,6 @@ export function TimeEntriesPage() {
   const [retailers, setRetailers] = useState<{ id: string; name: string }[]>([]);
   const [employees, setEmployees] = useState<Profile[]>([]);
   const [activeDropdownIndex, setActiveDropdownIndex] = useState<number | null>(null);
-  const [locationSearchTerm, setLocationSearchTerm] = useState('');
   const [activeEmployeeDropdownIndex, setActiveEmployeeDropdownIndex] = useState<number | null>(null);
   const [activeRetailerDropdownIndex, setActiveRetailerDropdownIndex] = useState<{ entry: number, expense: number } | null>(null);
   const [employeeHighlight, setEmployeeHighlight] = useState<Record<number, number>>({});
@@ -431,25 +430,44 @@ export function TimeEntriesPage() {
             }
 
             let retailerId = expense.retailer_id;
-            if (expense.retailer_name && !retailerId) {
-              // Modified retailer lookup to handle no results properly
-              const { data: existingRetailers } = await supabase
+            const retailerName = expense.retailer_name?.trim();
+            if (retailerName && !retailerId) {
+              const { data: existingRetailers, error: retailerLookupError } = await supabase
                 .from('retailers')
                 .select('id')
-                .eq('name', expense.retailer_name)
+                .eq('name', retailerName)
                 .limit(1);
+
+              if (retailerLookupError) throw retailerLookupError;
 
               if (existingRetailers && existingRetailers.length > 0) {
                 retailerId = existingRetailers[0].id;
               } else {
-                const { data: newRetailer, error: retailerError } = await supabase
+                const { data: insertedRetailer, error: retailerInsertError } = await supabase
                   .from('retailers')
-                  .insert({ name: expense.retailer_name })
-                  .select()
+                  .insert({ name: retailerName })
+                  .select('id')
                   .single();
 
-                if (retailerError) throw retailerError;
-                retailerId = newRetailer.id;
+                if (retailerInsertError) {
+                  if (retailerInsertError.code === '23505') {
+                    const { data: duplicateRetailers, error: duplicateLookupError } = await supabase
+                      .from('retailers')
+                      .select('id')
+                      .eq('name', retailerName)
+                      .limit(1);
+
+                    if (duplicateLookupError || !duplicateRetailers || duplicateRetailers.length === 0) {
+                      throw duplicateLookupError || retailerInsertError;
+                    }
+
+                    retailerId = duplicateRetailers[0].id;
+                  } else {
+                    throw retailerInsertError;
+                  }
+                } else {
+                  retailerId = insertedRetailer.id;
+                }
               }
             }
 
@@ -458,6 +476,8 @@ export function TimeEntriesPage() {
               .insert({
                 time_entry_id: timeEntry.id,
                 user_id: (isAdmin || isSupervisor) ? entry.user_id : userId,
+                date: entry.date,
+                location: entry.location,
                 amount: expense.amount,
                 description: expense.description,
                 retailer_id: retailerId,
@@ -506,7 +526,6 @@ export function TimeEntriesPage() {
     newEntries[entryIndex].location = location;
     setEntries(newEntries);
     setActiveDropdownIndex(null);
-    setLocationSearchTerm('');
   };
 
   const addSameDayEntry = () => {
