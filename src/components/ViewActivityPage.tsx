@@ -7,7 +7,9 @@ import { distinctColors, generateUniqueColor } from '../lib/colorUtils';
 
 const downloadReceipt = async (url: string, filename?: string) => {
   try {
-    const response = await fetch(url.trim());
+    // Clean the URL by removing newlines and URL-encoded newlines
+    const cleanUrl = url.trim().replace(/%0A/g, '').replace(/\n/g, '');
+    const response = await fetch(cleanUrl);
     const blob = await response.blob();
     const blobUrl = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -711,38 +713,46 @@ export function ViewActivityPage() {
       if (error) throw error;
 
       // Fetch standalone expenses (expenses without time_entry_id)
-      let standaloneExpensesQuery = supabase
-        .from('expenses')
-        .select(`
-          id,
-          date,
-          amount,
-          description,
-          location,
-          receipt_url,
-          receipt_image_url,
-          user_id,
-          retailer_id,
-          retailers (name)
-        `)
-        .is('time_entry_id', null)
-        .gte('date', startDate)
-        .lte('date', endDate)
-        .order('date', { ascending: false });
+      let standaloneExpenses: any[] = [];
+      try {
+        let standaloneExpensesQuery = supabase
+          .from('expenses')
+          .select(`
+            id,
+            date,
+            amount,
+            description,
+            location,
+            receipt_url,
+            receipt_image_url,
+            user_id,
+            retailer_id,
+            retailers (name)
+          `)
+          .is('time_entry_id', null)
+          .gte('date', startDate)
+          .lte('date', endDate)
+          .order('date', { ascending: false });
 
-      if (location) {
-        standaloneExpensesQuery = standaloneExpensesQuery.eq('location', location);
-      }
+        if (location) {
+          standaloneExpensesQuery = standaloneExpensesQuery.eq('location', location);
+        }
 
-      // Filter by user_id for regular employees
-      if (userRole !== 'admin' && userRole !== 'supervisor' && user) {
-        standaloneExpensesQuery = standaloneExpensesQuery.eq('user_id', user.id);
-      }
+        // Filter by user_id for regular employees
+        if (userRole !== 'admin' && userRole !== 'supervisor' && user) {
+          standaloneExpensesQuery = standaloneExpensesQuery.eq('user_id', user.id);
+        }
 
-      const { data: standaloneExpenses, error: standaloneError } = await standaloneExpensesQuery;
-      if (standaloneError) {
-        console.error('Error fetching standalone expenses:', standaloneError);
-        throw standaloneError;
+        const { data: expensesData, error: standaloneError } = await standaloneExpensesQuery;
+        if (standaloneError) {
+          console.error('Error fetching standalone expenses:', standaloneError);
+          // Don't throw - just continue without standalone expenses
+        } else {
+          standaloneExpenses = expensesData || [];
+        }
+      } catch (expenseError) {
+        console.error('Error fetching standalone expenses:', expenseError);
+        // Continue without standalone expenses rather than failing entirely
       }
 
       // Fetch rates and chart colors for all unique user_ids if admin/supervisor

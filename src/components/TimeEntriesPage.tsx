@@ -6,7 +6,9 @@ import { useAudioFeedback } from '../lib/useAudioFeedback';
 
 const downloadReceipt = async (url: string, filename?: string) => {
   try {
-    const response = await fetch(url.trim());
+    // Clean the URL by removing newlines and URL-encoded newlines
+    const cleanUrl = url.trim().replace(/%0A/g, '').replace(/\n/g, '');
+    const response = await fetch(cleanUrl);
     const blob = await response.blob();
     const blobUrl = URL.createObjectURL(blob);
     const link = document.createElement('a');

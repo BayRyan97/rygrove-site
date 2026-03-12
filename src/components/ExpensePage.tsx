@@ -5,8 +5,20 @@ import { format } from 'date-fns';
 
 const downloadReceipt = async (url: string, filename?: string) => {
   try {
-    const response = await fetch(url.trim());
+    // Clean the URL by removing newlines and URL-encoded newlines
+    const cleanUrl = url.trim().replace(/%0A/g, '').replace(/\n/g, '');
+    console.log('Downloading receipt from URL:', cleanUrl);
+    
+    const response = await fetch(cleanUrl);
+    console.log('Response status:', response.status);
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
     const blob = await response.blob();
+    console.log('Blob size:', blob.size, 'Type:', blob.type);
+    
     const blobUrl = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = blobUrl;
@@ -17,7 +29,8 @@ const downloadReceipt = async (url: string, filename?: string) => {
     URL.revokeObjectURL(blobUrl);
   } catch (error) {
     console.error('Error downloading receipt:', error);
-    alert('Failed to download receipt. Please try again.');
+    console.error('Attempted URL:', url);
+    alert(`Failed to download receipt: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 };
 
