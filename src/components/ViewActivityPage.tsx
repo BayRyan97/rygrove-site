@@ -850,7 +850,7 @@ export function ViewActivityPage() {
     if (startDate && endDate) {
       fetchEntries();
     }
-  }, []);
+  }, [startDate, endDate]);
 
   const deleteEntry = async (entryId: string) => {
     if (!confirm('Are you sure you want to delete this time entry?')) {
