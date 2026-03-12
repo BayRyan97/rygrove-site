@@ -4,6 +4,25 @@ import { Calendar, Search, User, MapPin, ChevronDown, ChevronRight, X, Download,
 import { supabase, getUserRole } from '../lib/supabase';
 import { generateActivityPDF } from '../lib/pdfExport';
 import { distinctColors, generateUniqueColor } from '../lib/colorUtils';
+
+const downloadReceipt = async (url: string, filename?: string) => {
+  try {
+    const response = await fetch(url.trim());
+    const blob = await response.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = blobUrl;
+    link.download = filename || 'receipt.jpg';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(blobUrl);
+  } catch (error) {
+    console.error('Error downloading receipt:', error);
+    alert('Failed to download receipt. Please try again.');
+  }
+};
+
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -1796,13 +1815,13 @@ export function ViewActivityPage() {
                                                           <div>
                                                             <p className="text-xs text-gray-900">{expense.description}</p>
                                                             {expense.receipt_url && (
-                                                              <a
-                                                                href={expense.receipt_url.trim()}
-                                                                download
-                                                                className="text-xs text-blue-600 hover:text-blue-800"
+                                                              <button
+                                                                type="button"
+                                                                onClick={() => downloadReceipt(expense.receipt_url!, 'receipt.jpg')}
+                                                                className="text-xs text-blue-600 hover:text-blue-800 underline"
                                                               >
                                                                 Download Receipt
-                                                              </a>
+                                                              </button>
                                                             )}
                                                           </div>
                                                           <p className="text-xs font-medium text-gray-900">
@@ -2049,13 +2068,13 @@ export function ViewActivityPage() {
                             <div>
                               <p className="text-xs text-gray-900">{expense.description}</p>
                               {expense.receipt_url && (
-                                <a
-                                  href={expense.receipt_url.trim()}
-                                  download
-                                  className="text-xs text-blue-600 hover:text-blue-800"
+                                <button
+                                  type="button"
+                                  onClick={() => downloadReceipt(expense.receipt_url!, 'receipt.jpg')}
+                                  className="text-xs text-blue-600 hover:text-blue-800 underline"
                                 >
                                   Download Receipt
-                                </a>
+                                </button>
                               )}
                             </div>
                             <p className="text-xs font-medium text-gray-900">
@@ -2144,13 +2163,13 @@ export function ViewActivityPage() {
                             <div className="flex-1">
                               <p className="text-sm font-medium text-gray-900">{expense.description}</p>
                               {expense.receipt_url ? (
-                                <a
-                                  href={expense.receipt_url.trim()}
-                                  download
+                                <button
+                                  type="button"
+                                  onClick={() => downloadReceipt(expense.receipt_url!, `receipt-${entry.full_name}-${format(parseISO(entry.date), 'yyyy-MM-dd')}.jpg`)}
                                   className="text-sm text-blue-600 hover:text-blue-800 hover:underline inline-flex items-center gap-1 mt-1"
                                 >
                                   Download Receipt →
-                                </a>
+                                </button>
                               ) : (
                                 <p className="text-xs text-gray-400 mt-1">No receipt attached</p>
                               )}

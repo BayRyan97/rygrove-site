@@ -3,6 +3,24 @@ import { DollarSign, Store, Upload, MapPin, ChevronDown, Plus, X } from 'lucide-
 import { supabase } from '../lib/supabase';
 import { format } from 'date-fns';
 
+const downloadReceipt = async (url: string, filename?: string) => {
+  try {
+    const response = await fetch(url.trim());
+    const blob = await response.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = blobUrl;
+    link.download = filename || 'receipt.jpg';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(blobUrl);
+  } catch (error) {
+    console.error('Error downloading receipt:', error);
+    alert('Failed to download receipt. Please try again.');
+  }
+};
+
 interface Expense {
   id?: string;
   date: string;
@@ -534,13 +552,13 @@ export function ExpensePage() {
                     </label>
                   </div>
                   {expense.receipt_url && (
-                    <a
-                      href={expense.receipt_url.trim()}
-                      download
-                      className="text-blue-600 hover:text-blue-800 text-sm"
+                    <button
+                      type="button"
+                      onClick={() => downloadReceipt(expense.receipt_url!, `receipt-${index + 1}.jpg`)}
+                      className="text-blue-600 hover:text-blue-800 text-sm underline"
                     >
                       Download Receipt
-                    </a>
+                    </button>
                   )}
                 </div>
               </div>
