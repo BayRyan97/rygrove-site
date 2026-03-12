@@ -93,20 +93,35 @@ export default function PlannerPage() {
       const projectStart = parsePlannerDate(selectedProject.start_date);
       const projectEnd = parsePlannerDate(selectedProject.end_date);
 
-      if (!projectStart || !projectEnd || isAfter(projectStart, projectEnd)) {
+      console.log('Safari Debug - Project dates:', {
+        start_date: selectedProject.start_date,
+        end_date: selectedProject.end_date,
+        projectStart,
+        projectEnd,
+        isProjectStartValid: projectStart && isValid(projectStart),
+        isProjectEndValid: projectEnd && isValid(projectEnd)
+      });
+
+      if (!projectStart || !projectEnd || !isValid(projectStart) || !isValid(projectEnd) || isAfter(projectStart, projectEnd)) {
+        console.log('Safari Debug - Using fallback (invalid dates)');
         const today = new Date();
         return {
           viewportStart: startOfMonth(today),
           viewportEnd: endOfMonth(today)
         };
       }
-      return {
+      
+      const viewport = {
         viewportStart: subWeeks(startOfWeek(projectStart), 1),
         viewportEnd: addWeeks(endOfWeek(projectEnd), 1)
       };
+      
+      console.log('Safari Debug - Calculated viewport:', viewport);
+      return viewport;
     }
     
     // Fallback: show current month if no project dates
+    console.log('Safari Debug - Using fallback (no project dates)');
     const today = new Date();
     return {
       viewportStart: startOfMonth(today),
@@ -693,7 +708,21 @@ export default function PlannerPage() {
   };
 
   // Generate viewport days
-  const viewportDays = eachDayOfInterval({ start: viewportStart, end: viewportEnd });
+  const viewportDays = useMemo(() => {
+    if (!viewportStart || !viewportEnd || !isValid(viewportStart) || !isValid(viewportEnd)) {
+      console.error('Safari Debug - Invalid viewport dates:', { viewportStart, viewportEnd });
+      return [];
+    }
+    
+    try {
+      const days = eachDayOfInterval({ start: viewportStart, end: viewportEnd });
+      console.log('Safari Debug - Generated viewport days:', days.length);
+      return days;
+    } catch (error) {
+      console.error('Safari Debug - Error generating viewport days:', error);
+      return [];
+    }
+  }, [viewportStart, viewportEnd]);
 
   // Calculate today's position for indicator line (use Safari-compatible comparison)
   const todayIndex = viewportDays.findIndex(d => isSameDayCompat(d, new Date()));
@@ -1084,10 +1113,16 @@ export default function PlannerPage() {
                     {/* Day row with month labels */}
                     <div className="flex items-center border-b border-gray-200 h-full">
                       {viewportDays.map((day, dayIdx) => {
-                        const isToday = isSameDayCompat(day, new Date());
-                        const isFirstOfMonth = format(day, 'd') === '1';
-                        const monthName = format(day, 'MMM');
-                        const year = format(day, 'yyyy');
+                        try {
+                          if (!day || !isValid(day)) {
+                            console.error('Safari Debug - Invalid day at index:', dayIdx, day);
+                            return null;
+                          }
+                          
+                          const isToday = isSameDayCompat(day, new Date());
+                          const isFirstOfMonth = format(day, 'd') === '1';
+                          const monthName = format(day, 'MMM');
+                          const year = format(day, 'yyyy');
                         
                         return (
                           <div
@@ -1123,6 +1158,10 @@ export default function PlannerPage() {
                             </div>
                           </div>
                         );
+                        } catch (error) {
+                          console.error('Safari Debug - Error formatting date at index:', dayIdx, error);
+                          return null;
+                        }
                       })}
                     </div>
                   </div>
