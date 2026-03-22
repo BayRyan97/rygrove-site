@@ -186,32 +186,44 @@ export function ExpensePage() {
         }
 
         if (expense.receipt_url && expense.receipt_url.startsWith('blob:')) {
-          try {
-            const response = await fetch(expense.receipt_url);
-            const blob = await response.blob();
-            const fileExt = blob.type.split('/')[1] || 'jpg';
-            const fileName = `${crypto.randomUUID()}.${fileExt}`;
-            const filePath = `${userId}/${fileName}`;
+          const response = await fetch(expense.receipt_url);
+          const blob = await response.blob();
+          
+          // Determine file extension from blob type
+          let fileExt = 'jpg';
+          if (blob.type === 'application/pdf') {
+            fileExt = 'pdf';
+          } else if (blob.type.startsWith('image/')) {
+            fileExt = blob.type.split('/')[1] || 'jpg';
+          }
+          
+          const fileName = `${crypto.randomUUID()}.${fileExt}`;
+          const filePath = `${userId}/${fileName}`;
 
-            const { error: uploadError } = await supabase.storage
-              .from('receipts')
-              .upload(filePath, blob);
+          const { error: uploadError } = await supabase.storage
+            .from('receipts')
+            .upload(filePath, blob, {
+              contentType: blob.type,
+              upsert: false
+            });
 
-            if (uploadError) throw uploadError;
-
-            const { data: { publicUrl } } = supabase.storage
-              .from('receipts')
-              .getPublicUrl(filePath);
-
-            expense.receipt_url = publicUrl;
-            expense.receipt_image_url = publicUrl;
-          } catch (uploadError) {
+          if (uploadError) {
             console.error('Receipt upload error:', {
               step: 'receipt_upload_error',
               expenseIndex,
+              fileName,
+              fileType: blob.type,
               uploadError
             });
+            throw new Error(`Expense ${expenseIndex + 1}: Failed to upload receipt - ${uploadError.message}`);
           }
+
+          const { data: { publicUrl } } = supabase.storage
+            .from('receipts')
+            .getPublicUrl(filePath);
+
+          expense.receipt_url = publicUrl;
+          expense.receipt_image_url = publicUrl;
         }
 
         let retailerId = expense.retailer_id;
