@@ -68,6 +68,8 @@ interface TimeEntry {
     amount: number;
     description: string;
     receipt_url: string | null;
+    retailer_id?: string | null;
+    retailers?: { name: string } | null;
   }[];
 }
 
@@ -691,7 +693,7 @@ export function ViewActivityPage() {
           is_full_day,
           work_type,
           work_type_other,
-          expenses (amount, description, receipt_url)
+          expenses (amount, description, receipt_url, retailer_id, retailers(name))
         `)
         .gte('date', startDate)
         .lte('date', endDate)
@@ -911,7 +913,7 @@ export function ViewActivityPage() {
         .update(payload)
         .eq('id', entryId)
         .select(
-          `id, date, start_time, end_time, location, lunch_break, notes, created_at, user_id, full_name, is_full_day, work_type, work_type_other, expenses (amount, description, receipt_url)`
+          `id, date, start_time, end_time, location, lunch_break, notes, created_at, user_id, full_name, is_full_day, work_type, work_type_other, expenses (amount, description, receipt_url, retailer_id, retailers(name))`
         )
         .single();
 
@@ -1824,6 +1826,9 @@ export function ViewActivityPage() {
                                                         <div key={index} className="flex items-start justify-between bg-gray-50 p-2 rounded-lg">
                                                           <div>
                                                             <p className="text-xs text-gray-900">{expense.description}</p>
+                                                            {expense.retailers?.name && (
+                                                              <p className="text-xs text-gray-600 mt-0.5">at {expense.retailers.name}</p>
+                                                            )}
                                                             {expense.receipt_url && (
                                                               <button
                                                                 type="button"
@@ -2077,6 +2082,9 @@ export function ViewActivityPage() {
                           <div key={index} className="flex items-start justify-between bg-gray-50 p-2 rounded-lg">
                             <div>
                               <p className="text-xs text-gray-900">{expense.description}</p>
+                              {expense.retailers?.name && (
+                                <p className="text-xs text-gray-600 mt-0.5">at {expense.retailers.name}</p>
+                              )}
                               {expense.receipt_url && (
                                 <button
                                   type="button"
@@ -2172,6 +2180,9 @@ export function ViewActivityPage() {
                           <div key={index} className="flex items-start justify-between bg-gray-50 p-3 rounded-lg">
                             <div className="flex-1">
                               <p className="text-sm font-medium text-gray-900">{expense.description}</p>
+                              {expense.retailers?.name && (
+                                <p className="text-sm text-gray-600 mt-0.5">at {expense.retailers.name}</p>
+                              )}
                               {expense.receipt_url ? (
                                 <button
                                   type="button"
