@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { format, parseISO } from 'date-fns';
-import { FileSpreadsheet, Search, MapPin, ChevronDown } from 'lucide-react';
+import { FileSpreadsheet, Search, MapPin, ChevronDown, FileText } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { generateClientInvoicePDF } from '../lib/pdfExport';
 
 interface TimeEntry {
   id: string;
@@ -437,6 +438,20 @@ export function CreateInvoicePage() {
     };
   }, [timeEntries, standaloneExpenses, rateOverrides, laborMarkupPercent, expenseMarkupPercent, calculateHours]);
 
+  const generateClientPDF = () => {
+    generateClientInvoicePDF({
+      location: selectedLocation,
+      startDate,
+      endDate,
+      entries: timeEntries,
+      standaloneExpenses,
+      laborTotal: locationSummary.laborTotal,
+      expenseTotal: locationSummary.expenseTotal,
+      grandTotal: locationSummary.grandTotal,
+      totalHours: locationSummary.totalHours
+    });
+  };
+
   const generateExcel = () => {
     const headers = [
       'Date',
@@ -770,13 +785,22 @@ export function CreateInvoicePage() {
                 {format(parseISO(startDate), 'MMMM d, yyyy')} - {format(parseISO(endDate), 'MMMM d, yyyy')}
               </p>
             </div>
-            <button
-              onClick={generateExcel}
-              className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-            >
-              <FileSpreadsheet className="h-4 w-4 mr-2" />
-              Generate Invoice
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={generateClientPDF}
+                className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              >
+                <FileText className="h-4 w-4 mr-2" />
+                Client Invoice (PDF)
+              </button>
+              <button
+                onClick={generateExcel}
+                className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+              >
+                <FileSpreadsheet className="h-4 w-4 mr-2" />
+                Detailed Report (CSV)
+              </button>
+            </div>
           </div>
 
           {/* Invoice Settings */}

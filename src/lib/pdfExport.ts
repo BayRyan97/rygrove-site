@@ -723,3 +723,270 @@ export const generateEstimatePDF = (estimateData: EstimateData) => {
   const filename = `${estimateData.jobName.replace(/[^a-z0-9]/gi, '_')}_Estimate.pdf`;
   doc.save(filename);
 };
+
+// Client-facing invoice interface
+interface InvoiceEntry {
+  id: string;
+  date: string;
+  start_time: string;
+  end_time: string;
+  full_name: string;
+  is_full_day: boolean;
+  lunch_break: string | null;
+  expenses: {
+    amount: number;
+    description: string;
+    retailer_name?: string;
+  }[];
+}
+
+interface StandaloneExpense {
+  date: string;
+  description: string;
+  retailer_name?: string;
+  amount: number;
+}
+
+interface InvoiceData {
+  location: string;
+  startDate: string;
+  endDate: string;
+  entries: InvoiceEntry[];
+  standaloneExpenses: StandaloneExpense[];
+  laborTotal: number;
+  expenseTotal: number;
+  grandTotal: number;
+  totalHours: number;
+}
+
+export const generateClientInvoicePDF = (invoiceData: InvoiceData) => {
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'letter'
+  });
+
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+
+  // Add header with Rygrove branding
+  let yPosition = addHeader(doc);
+  yPosition += 5;
+
+  // Company address
+  doc.setFontSize(9);
+  doc.setFont('Helvetica', 'normal');
+  doc.setTextColor(107, 114, 128); // gray-600
+  doc.text('27 Carpenter St, Glen Cove, NY 11542', 15, yPosition);
+  yPosition += 8;
+
+  // Invoice title and job info
+  doc.setFontSize(16);
+  doc.setFont('Helvetica', 'bold');
+  doc.setTextColor(37, 99, 235); // blue-600
+  doc.text('INVOICE', 15, yPosition);
+  yPosition += 10;
+
+  // Job details
+  doc.setFontSize(11);
+  doc.setFont('Helvetica', 'bold');
+  doc.setTextColor(17, 24, 39); // gray-900
+  doc.text(`Job: ${invoiceData.location}`, 15, yPosition);
+  yPosition += 6;
+
+  doc.setFontSize(9);
+  doc.setFont('Helvetica', 'normal');
+  doc.setTextColor(107, 114, 128); // gray-600
+  const dateRangeText = `Period: ${format(parseISO(invoiceData.startDate), 'MMM d, yyyy')} - ${format(parseISO(invoiceData.endDate), 'MMM d, yyyy')}`;
+  doc.text(dateRangeText, 15, yPosition);
+  yPosition += 5;
+
+  doc.text(`Invoice Date: ${format(new Date(), 'MMMM d, yyyy')}`, 15, yPosition);
+  yPosition += 10;
+
+  // Labor summary section
+  doc.setFontSize(12);
+  doc.setFont('Helvetica', 'bold');
+  doc.setTextColor(17, 24, 39); // gray-900
+  doc.text('Labor Summary', 15, yPosition);
+  yPosition += 8;
+
+  // Group entries by employee
+  const employeeHours: { [name: string]: number } = {};
+  invoiceData.entries.forEach(entry => {
+    const hours = calculateDuration(entry.start_time, entry.end_time, entry.lunch_break);
+    employeeHours[entry.full_name] = (employeeHours[entry.full_name] || 0) + hours;
+  });
+
+  // Create labor table (NO RATES)
+  const laborHeaders = ['Employee', 'Hours'];
+  const laborRows: string[][] = [];
+
+  Object.entries(employeeHours)
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .forEach(([name, hours]) => {
+      laborRows.push([name, formatHours(hours)]);
+    });
+
+  // Add total row
+  laborRows.push([
+    { content: 'Total Labor', styles: { fontStyle: 'bold' } },
+    { content: formatCurrency(invoiceData.laborTotal), styles: { fontStyle: 'bold', fillColor: [249, 250, 251] } }
+  ] as any);
+
+  autoTable(doc, {
+    head: [laborHeaders],
+    body: laborRows,
+    startY: yPosition,
+    margin: { left: 15, right: 15 },
+    styles: {
+      fontSize: 9,
+      cellPadding: 5,
+      textColor: 55,
+      lineColor: 229,
+      fillColor: 255,
+      halign: 'left'
+    },
+    headStyles: {
+      fillColor: [37, 99, 235], // blue-600
+      textColor: 255,
+      fontStyle: 'bold'
+    },
+    alternateRowStyles: {
+      fillColor: [249, 250, 251] // gray-50
+    },
+    columnStyles: {
+      0: { cellWidth: pageWidth - 60 },
+      1: { halign: 'right', cellWidth: 30 }
+    }
+  });
+
+  yPosition = (doc as any).lastAutoTable.finalY + 10;
+
+  // Expenses section (if any)
+  const allExpenses: Array<{
+    date: string;
+    description: string;
+    retailer: string;
+    amount: number;
+  }> = [];
+
+  // Collect expenses from entries
+  invoiceData.entries.forEach(entry => {
+    if (entry.expenses && entry.expenses.length > 0) {
+      entry.expenses.forEach(expense => {
+        allExpenses.push({
+          date: entry.date,
+          description: expense.description,
+          retailer: expense.retailer_name || 'N/A',
+          amount: expense.amount
+        });
+      });
+    }
+  });
+
+  // Add standalone expenses
+  invoiceData.standaloneExpenses.forEach(expense => {
+    allExpenses.push({
+      date: expense.date,
+      description: expense.description,
+      retailer: expense.retailer_name || 'N/A',
+      amount: expense.amount
+    });
+  });
+
+  if (allExpenses.length > 0) {
+    doc.setFontSize(12);
+    doc.setFont('Helvetica', 'bold');
+    doc.setTextColor(17, 24, 39); // gray-900
+    doc.text('Expenses', 15, yPosition);
+    yPosition += 8;
+
+    // Sort expenses by date
+    allExpenses.sort((a, b) => a.date.localeCompare(b.date));
+
+    const expenseHeaders = ['Date', 'Retailer', 'Description', 'Amount'];
+    const expenseRows: (string | number)[][] = allExpenses.map(expense => [
+      format(parseISO(expense.date), 'MM/dd/yyyy'),
+      expense.retailer,
+      expense.description,
+      formatCurrency(expense.amount)
+    ]);
+
+    // Add total row
+    expenseRows.push([
+      { content: 'Total Expenses', colSpan: 3, styles: { fontStyle: 'bold', halign: 'right' } },
+      { content: formatCurrency(invoiceData.expenseTotal), styles: { fontStyle: 'bold', fillColor: [249, 250, 251] } }
+    ] as any);
+
+    autoTable(doc, {
+      head: [expenseHeaders],
+      body: expenseRows,
+      startY: yPosition,
+      margin: { left: 15, right: 15 },
+      styles: {
+        fontSize: 8,
+        cellPadding: 4,
+        textColor: 55,
+        lineColor: 229,
+        fillColor: 255,
+        halign: 'left',
+        overflow: 'linebreak'
+      },
+      headStyles: {
+        fillColor: [37, 99, 235], // blue-600
+        textColor: 255,
+        fontStyle: 'bold',
+        halign: 'left'
+      },
+      alternateRowStyles: {
+        fillColor: [249, 250, 251] // gray-50
+      },
+      columnStyles: {
+        0: { cellWidth: 25 },
+        1: { cellWidth: 35 },
+        2: { cellWidth: 75 },
+        3: { halign: 'right', cellWidth: 30 }
+      }
+    });
+
+    yPosition = (doc as any).lastAutoTable.finalY + 10;
+  }
+
+  // Grand Total
+  doc.setFillColor(37, 99, 235); // blue-600
+  doc.rect(15, yPosition, pageWidth - 30, 15, 'F');
+
+  doc.setFontSize(14);
+  doc.setFont('Helvetica', 'bold');
+  doc.setTextColor(255, 255, 255); // white
+  doc.text('TOTAL DUE', 20, yPosition + 10);
+  doc.text(formatCurrency(invoiceData.grandTotal), pageWidth - 20, yPosition + 10, { align: 'right' });
+
+  yPosition += 20;
+
+  // Payment terms (optional)
+  if (yPosition < pageHeight - 40) {
+    doc.setFontSize(9);
+    doc.setFont('Helvetica', 'normal');
+    doc.setTextColor(107, 114, 128); // gray-600
+    doc.text('Payment is due within 30 days of invoice date.', 15, yPosition);
+    yPosition += 5;
+    doc.text('Thank you for your business!', 15, yPosition);
+  }
+
+  // Footer
+  const footerY = pageHeight - 8;
+  doc.setFontSize(8);
+  doc.setTextColor(156, 163, 175); // gray-400
+  doc.text(
+    `Invoice generated ${format(new Date(), 'MMM d, yyyy')}`,
+    15,
+    footerY
+  );
+
+  // Generate filename
+  const dateStr = format(new Date(), 'yyyy-MM-dd');
+  const filename = `Invoice-${invoiceData.location.replace(/[^a-z0-9]/gi, '_')}-${dateStr}.pdf`;
+  doc.save(filename);
+};
