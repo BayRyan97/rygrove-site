@@ -567,7 +567,7 @@ export function ExpensePage() {
                   {expense.receipt_url && (
                     <button
                       type="button"
-                      onClick={() => downloadReceipt(expense.receipt_url!, `receipt-${index + 1}.jpg`)}
+                      onClick={() => downloadReceipt(expense.receipt_url!)}
                       className="text-blue-600 hover:text-blue-800 text-sm underline"
                     >
                       Download Receipt

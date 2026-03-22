@@ -14,7 +14,9 @@ const downloadReceipt = async (url: string, filename?: string) => {
     const blobUrl = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = blobUrl;
-    link.download = filename || 'receipt.jpg';
+    // Determine file extension from blob type or URL
+    const fileExt = blob.type === 'application/pdf' ? 'pdf' : (blob.type.startsWith('image/') ? blob.type.split('/')[1] : 'jpg');
+    link.download = filename || `receipt.${fileExt}`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -831,7 +833,9 @@ export function ViewActivityPage() {
           expenses: [{
             amount: exp.amount,
             description: exp.description,
-            receipt_url: exp.receipt_url || exp.receipt_image_url
+            receipt_url: exp.receipt_url || exp.receipt_image_url,
+            retailer_id: exp.retailer_id,
+            retailers: exp.retailers
           }],
           is_expense_only: true // Flag to identify standalone expenses
         }));
