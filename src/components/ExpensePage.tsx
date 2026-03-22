@@ -340,9 +340,9 @@ export function ExpensePage() {
         throw new Error('File size must be less than 5MB');
       }
 
-      const allowedTypes = ['image/jpeg', 'image/png', 'image/heic', 'image/heif'];
+      const allowedTypes = ['image/jpeg', 'image/png', 'image/heic', 'image/heif', 'application/pdf'];
       if (!allowedTypes.includes(file.type)) {
-        throw new Error('Only JPEG, PNG, HEIC, and HEIF images are allowed');
+        throw new Error('Only JPEG, PNG, HEIC, HEIF images and PDF files are allowed');
       }
 
       const newExpenses = [...expenses];
@@ -559,7 +559,7 @@ export function ExpensePage() {
                             handleFileUpload(index, file);
                           }
                         }}
-                        accept="image/jpeg,image/png,image/heic,image/heif"
+                        accept="image/jpeg,image/png,image/heic,image/heif,application/pdf"
                         className="hidden"
                       />
                     </label>
