@@ -21,6 +21,8 @@ interface TimeEntry {
     amount: number;
     description: string;
     receipt_url: string | null;
+    retailer_id?: string | null;
+    retailers?: { name: string } | null;
   }[];
 }
 
@@ -435,6 +437,124 @@ export const generateActivityPDF = (
       );
     }
   });
+
+  // ===== PAGE 3: EXPENSES PAGE =====
+  // Collect all expenses from entries
+  const allExpenses: Array<{
+    date: string;
+    employee: string;
+    location: string;
+    description: string;
+    retailer: string;
+    amount: number;
+    receipt_url: string | null;
+  }> = [];
+
+  entries.forEach(entry => {
+    if (entry.expenses && entry.expenses.length > 0) {
+      entry.expenses.forEach(expense => {
+        allExpenses.push({
+          date: entry.date,
+          employee: entry.full_name,
+          location: entry.location,
+          description: expense.description,
+          retailer: expense.retailers?.name || 'N/A',
+          amount: expense.amount,
+          receipt_url: expense.receipt_url
+        });
+      });
+    }
+  });
+
+  // Only add expenses page if there are expenses
+  if (allExpenses.length > 0) {
+    doc.addPage();
+    
+    // Header on new page
+    yPosition = addHeader(doc);
+    yPosition += 5;
+
+    // Section title
+    doc.setFontSize(12);
+    doc.setFont('Helvetica', 'bold');
+    doc.setTextColor(17, 24, 39); // gray-900
+    doc.text('Expense Details', 15, yPosition);
+    yPosition += 4;
+
+    // Subtitle with total expenses
+    doc.setFontSize(10);
+    doc.setFont('Helvetica', 'normal');
+    doc.setTextColor(107, 114, 128); // gray-600
+    doc.text(`Total: ${formatCurrency(summary.totalExpenses)} (${allExpenses.length} expense${allExpenses.length === 1 ? '' : 's'})`, 15, yPosition);
+    yPosition += 8;
+
+    // Sort expenses by date (most recent first)
+    allExpenses.sort((a, b) => b.date.localeCompare(a.date));
+
+    // Create expenses table
+    const expenseHeaders = ['Date', 'Employee', 'Location', 'Retailer', 'Description', 'Amount'];
+    const expenseRows: (string | number)[][] = allExpenses.map(expense => [
+      format(parseISO(expense.date), 'MM/dd/yyyy'),
+      expense.employee,
+      expense.location,
+      expense.retailer,
+      expense.description,
+      formatCurrency(expense.amount)
+    ]);
+
+    // Add total row
+    expenseRows.push([
+      { content: 'TOTAL', colSpan: 5, styles: { fontStyle: 'bold', halign: 'right' } },
+      { content: formatCurrency(summary.totalExpenses), styles: { fontStyle: 'bold', fillColor: [249, 250, 251] } }
+    ] as any);
+
+    // Add table
+    autoTable(doc, {
+      head: [expenseHeaders],
+      body: expenseRows,
+      startY: yPosition,
+      margin: { left: 15, right: 15, top: 10, bottom: 25 },
+      styles: {
+        fontSize: 8,
+        cellPadding: 4,
+        textColor: 55,
+        lineColor: 229,
+        fillColor: 255,
+        halign: 'left',
+        overflow: 'linebreak'
+      },
+      headStyles: {
+        fillColor: [37, 99, 235], // blue-600
+        textColor: 255,
+        fontStyle: 'bold',
+        halign: 'left'
+      },
+      alternateRowStyles: {
+        fillColor: [249, 250, 251] // gray-50
+      },
+      columnStyles: {
+        0: { cellWidth: 22 }, // Date
+        1: { cellWidth: 30 }, // Employee
+        2: { cellWidth: 35 }, // Location
+        3: { cellWidth: 30 }, // Retailer
+        4: { cellWidth: 50 }, // Description
+        5: { halign: 'right', cellWidth: 25 } // Amount
+      },
+      didDrawPage: (data) => {
+        // Footer on all pages
+        const pageCount = doc.getNumberOfPages();
+        const footerY = pageHeight - 8;
+
+        doc.setFontSize(8);
+        doc.setTextColor(156, 163, 175); // gray-400
+        doc.text(
+          `Generated on ${format(new Date(), 'MMM d, yyyy')} | Page ${data.pageNumber} of ${pageCount}`,
+          15,
+          footerY
+        );
+      }
+    });
+  }
 
   // Generate filename with date and time down to the second
   const now = new Date();
