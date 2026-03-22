@@ -237,8 +237,49 @@ export function CreateInvoicePage() {
         ...entry,
         full_name: entry.profiles?.full_name || 'Unknown',
         rate: entry.profiles?.rate || 0,
-        expenses: [] // Initialize empty expenses array
+        expenses: [] // Will be populated below
       })) || [];
+
+      // Fetch expenses linked to these time entries
+      if (transformedData.length > 0) {
+        const timeEntryIds = transformedData.map(entry => entry.id);
+        
+        try {
+          const { data: linkedExpensesData, error: linkedExpensesError } = await supabase
+            .from('expenses')
+            .select(`
+              id,
+              time_entry_id,
+              amount,
+              description,
+              receipt_url,
+              retailer_id,
+              retailers (
+                name
+              )
+            `)
+            .in('time_entry_id', timeEntryIds);
+
+          if (linkedExpensesError) {
+            console.error('Error fetching linked expenses:', linkedExpensesError);
+          } else if (linkedExpensesData) {
+            // Attach expenses to their corresponding time entries
+            linkedExpensesData.forEach((expense: any) => {
+              const entry = transformedData.find(e => e.id === expense.time_entry_id);
+              if (entry) {
+                entry.expenses.push({
+                  amount: expense.amount,
+                  description: expense.description,
+                  receipt_url: expense.receipt_url,
+                  retailer_name: expense.retailers?.name || null
+                });
+              }
+            });
+          }
+        } catch (err) {
+          console.error('Error fetching linked expenses:', err);
+        }
+      }
 
       setTimeEntries(transformedData);
 
