@@ -162,6 +162,8 @@ export function Dashboard({ user }: DashboardProps) {
       className={`min-h-screen ${
         activeTab === 'admin'
           ? 'bg-gradient-to-br from-white via-red-50 to-red-300'
+          : activeTab === 'create-invoice'
+            ? 'bg-gradient-to-br from-white via-green-50 to-emerald-300'
           : 'gradient-bg'
       }`}
     >

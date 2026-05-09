@@ -34,13 +34,39 @@ interface StandaloneExpense {
   retailer_name?: string;
 }
 
+interface EstimateWorksheet {
+  id: string;
+  job_name: string;
+  total: number;
+  updated_at: string;
+  items: Array<{
+    id: string;
+    item: string;
+    cost: number;
+  }>;
+}
+
+interface EstimateProgressRow {
+  id: string;
+  sourceItemId: string;
+  item: string;
+  sourceValue: number;
+  priorCumulativePercent: number;
+  currentCumulativePercent: number;
+  deltaPercent: number;
+  billedAmount: number;
+  isOverBilledWarning: boolean;
+}
+
 interface LocationSummary {
   totalHours: number;
   totalExpenses: number;
   employeeHours: { [key: string]: number };
   entries: TimeEntry[];
   standaloneExpenses: StandaloneExpense[];
+  estimateProgressRows: EstimateProgressRow[];
   laborCosts: { [key: string]: { hours: number; rate: number; cost: number } };
+  progressSubtotal: number;
   laborSubtotal: number;
   laborMarkup: number;
   laborTotal: number;
@@ -79,7 +105,15 @@ export function CreateInvoicePage() {
   const [isLoading, setIsLoading] = useState(false);
   const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([]);
   const [standaloneExpenses, setStandaloneExpenses] = useState<StandaloneExpense[]>([]);
+  const [estimateWorksheets, setEstimateWorksheets] = useState<EstimateWorksheet[]>([]);
+  const [selectedEstimateId, setSelectedEstimateId] = useState('');
+  const [estimateSearchTerm, setEstimateSearchTerm] = useState('');
+  const [filteredEstimates, setFilteredEstimates] = useState<EstimateWorksheet[]>([]);
+  const [highlightedEstimateIndex, setHighlightedEstimateIndex] = useState(-1);
+  const [estimateProgressRows, setEstimateProgressRows] = useState<EstimateProgressRow[]>([]);
+  const [progressPercentInputs, setProgressPercentInputs] = useState<{ [key: string]: string }>({});
   const [showLocationDropdown, setShowLocationDropdown] = useState(false);
+  const [showEstimateDropdown, setShowEstimateDropdown] = useState(false);
   
   // Markup and rate override state
   const [laborMarkupPercent, setLaborMarkupPercent] = useState(20);
@@ -89,6 +123,7 @@ export function CreateInvoicePage() {
 
   useEffect(() => {
     fetchLocations();
+    fetchEstimateWorksheets();
   }, []);
 
   // Filter locations based on search input
@@ -105,20 +140,35 @@ export function CreateInvoicePage() {
     }
   }, [selectedLocation, locations]);
 
+  // Filter estimates based on search input
+  useEffect(() => {
+    if (estimateSearchTerm.trim()) {
+      const filtered = estimateWorksheets.filter((estimate) =>
+        estimate.job_name.toLowerCase().includes(estimateSearchTerm.toLowerCase())
+      );
+      setFilteredEstimates(filtered);
+      setHighlightedEstimateIndex(0);
+    } else {
+      setFilteredEstimates(estimateWorksheets);
+      setHighlightedEstimateIndex(-1);
+    }
+  }, [estimateSearchTerm, estimateWorksheets]);
+
   // Handle click outside to close dropdown
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
-      if (!target.closest('.location-dropdown-container')) {
+      if (!target.closest('.location-dropdown-container') && !target.closest('.estimate-dropdown-container')) {
         setShowLocationDropdown(false);
+          setShowEstimateDropdown(false);
       }
     };
 
-    if (showLocationDropdown) {
+      if (showLocationDropdown || showEstimateDropdown) {
       document.addEventListener('mousedown', handleClickOutside);
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
-  }, [showLocationDropdown]);
+    }, [showLocationDropdown, showEstimateDropdown]);
 
   const handleLocationKeyDown = (e: React.KeyboardEvent) => {
     if (!showLocationDropdown) {
@@ -204,10 +254,225 @@ export function CreateInvoicePage() {
     }
   };
 
-  const fetchTimeEntries = async () => {
-    if (!selectedLocation || !startDate || !endDate) return;
+  const fetchEstimateWorksheets = async () => {
+    try {
+      // Fetch all worksheets via pagination to avoid row limits.
+      const pageSize = 1000;
+      let page = 0;
+      let hasMore = true;
+      let allWorksheets: EstimateWorksheet[] = [];
+
+      while (hasMore) {
+        const { data, error } = await supabase
+          .from('estimate_worksheets')
+          .select('id, job_name, total, items, updated_at')
+          .order('updated_at', { ascending: false })
+          .range(page * pageSize, (page + 1) * pageSize - 1);
+
+        if (error) throw error;
+
+        const batch = (data as EstimateWorksheet[]) || [];
+        allWorksheets = [...allWorksheets, ...batch];
+        hasMore = batch.length === pageSize;
+        page += 1;
+      }
+
+      // De-duplicate defensively and sort latest first.
+      const uniqueById = new Map<string, EstimateWorksheet>();
+      allWorksheets.forEach((worksheet) => uniqueById.set(worksheet.id, worksheet));
+
+      const sorted = Array.from(uniqueById.values()).sort(
+        (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+      );
+
+      setEstimateWorksheets(sorted);
+    } catch (error) {
+      console.error('Error fetching estimate worksheets:', error);
+    }
+  };
+
+  const handleEstimateKeyDown = (e: React.KeyboardEvent) => {
+    if (!showEstimateDropdown) {
+      if (e.key === 'ArrowDown') {
+        setShowEstimateDropdown(true);
+        e.preventDefault();
+      }
+      return;
+    }
+
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        setHighlightedEstimateIndex((prev) =>
+          prev < filteredEstimates.length - 1 ? prev + 1 : prev
+        );
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        setHighlightedEstimateIndex((prev) => (prev > 0 ? prev - 1 : 0));
+        break;
+      case 'Enter':
+        e.preventDefault();
+        if (highlightedEstimateIndex >= 0 && highlightedEstimateIndex < filteredEstimates.length) {
+          const selectedEstimate = filteredEstimates[highlightedEstimateIndex];
+          setSelectedEstimateId(selectedEstimate.id);
+          setEstimateSearchTerm(selectedEstimate.job_name);
+          setShowEstimateDropdown(false);
+          setHighlightedEstimateIndex(-1);
+        }
+        break;
+      case 'Escape':
+        e.preventDefault();
+        setShowEstimateDropdown(false);
+        setHighlightedEstimateIndex(-1);
+        break;
+    }
+  };
+
+  const fetchEstimateProgressRows = async (estimateId: string) => {
+    if (!estimateId) {
+      setEstimateProgressRows([]);
+      return;
+    }
+
+    try {
+      const { data: estimateData, error: estimateError } = await supabase
+        .from('estimate_worksheets')
+        .select('id, job_name, total, items')
+        .eq('id', estimateId)
+        .single();
+
+      if (estimateError) throw estimateError;
+
+      const items = Array.isArray(estimateData.items) ? estimateData.items : [];
+
+      // If persistence tables are not deployed yet, this query will fail and fallback to 0% prior billing.
+      const priorPercentByItem: { [itemId: string]: number } = {};
+      const { data: priorData, error: priorError } = await supabase
+        .from('invoice_estimate_lines')
+        .select('source_item_id, current_cumulative_percent')
+        .eq('estimate_worksheet_id', estimateId);
+
+      if (!priorError && priorData) {
+        priorData.forEach((row: any) => {
+          const itemId = row.source_item_id;
+          const pct = Number(row.current_cumulative_percent) || 0;
+          priorPercentByItem[itemId] = Math.max(priorPercentByItem[itemId] || 0, pct);
+        });
+      }
+
+      const nextRows: EstimateProgressRow[] = items.map((item: any, index: number) => {
+        const itemId = String(item.id || `item-${index + 1}`);
+        const sourceValue = Number(item.cost) || 0;
+        const priorCumulativePercent = priorPercentByItem[itemId] || 0;
+        const currentCumulativePercent = priorCumulativePercent;
+        const deltaPercent = 0;
+        const billedAmount = 0;
+        const isOverBilledWarning = currentCumulativePercent > 100;
+
+        return {
+          id: `${estimateId}-${itemId}`,
+          sourceItemId: itemId,
+          item: String(item.item || `Estimate Line ${index + 1}`),
+          sourceValue,
+          priorCumulativePercent,
+          currentCumulativePercent,
+          deltaPercent,
+          billedAmount,
+          isOverBilledWarning,
+        };
+      });
+
+      setEstimateProgressRows(nextRows);
+      setProgressPercentInputs({});
+    } catch (error) {
+      console.error('Error fetching estimate progress rows:', error);
+      setEstimateProgressRows([]);
+    }
+  };
+
+  const handleSearchRecords = async () => {
+    if (!selectedLocation && !selectedEstimateId) return;
 
     setIsLoading(true);
+    try {
+      await Promise.all([
+        selectedLocation ? fetchTimeEntries() : Promise.resolve(),
+        selectedEstimateId ? fetchEstimateProgressRows(selectedEstimateId) : Promise.resolve(),
+      ]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const updateProgressPercent = (rowId: string, value: string) => {
+    setProgressPercentInputs((prev) => ({
+      ...prev,
+      [rowId]: value,
+    }));
+
+    const parsed = Number.parseFloat(value);
+    if (!Number.isFinite(parsed)) {
+      return;
+    }
+
+    const sanitized = Math.max(0, parsed);
+    setEstimateProgressRows((prevRows) =>
+      prevRows.map((row) => {
+        if (row.id !== rowId) return row;
+
+        const deltaPercent = Math.max(0, sanitized - row.priorCumulativePercent);
+        return {
+          ...row,
+          currentCumulativePercent: sanitized,
+          deltaPercent,
+          billedAmount: (deltaPercent / 100) * row.sourceValue,
+          isOverBilledWarning: sanitized > 100,
+        };
+      })
+    );
+  };
+
+  const commitProgressPercent = (rowId: string) => {
+    const rawInput = progressPercentInputs[rowId];
+    if (rawInput === undefined) return;
+
+    const parsed = Number.parseFloat(rawInput);
+    if (!Number.isFinite(parsed)) {
+      setProgressPercentInputs((prev) => {
+        const next = { ...prev };
+        delete next[rowId];
+        return next;
+      });
+      return;
+    }
+
+    const sanitized = Math.max(0, parsed);
+
+    setEstimateProgressRows((prevRows) =>
+      prevRows.map((row) => {
+        if (row.id !== rowId) return row;
+
+        const deltaPercent = Math.max(0, sanitized - row.priorCumulativePercent);
+        return {
+          ...row,
+          currentCumulativePercent: sanitized,
+          deltaPercent,
+          billedAmount: (deltaPercent / 100) * row.sourceValue,
+          isOverBilledWarning: sanitized > 100,
+        };
+      })
+    );
+
+    setProgressPercentInputs((prev) => {
+      const next = { ...prev };
+      delete next[rowId];
+      return next;
+    });
+  };
+
+  const fetchTimeEntries = async () => {
+    if (!selectedLocation || !startDate || !endDate) return;
     try {
       const { data, error } = await supabase
         .from('time_entries')
@@ -343,8 +608,6 @@ export function CreateInvoicePage() {
     } catch (error) {
       console.error('Error fetching time entries:', error);
       alert('Failed to fetch time entries');
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -386,7 +649,9 @@ export function CreateInvoicePage() {
       employeeHours: {},
       entries: [],
       standaloneExpenses: [],
+      estimateProgressRows: [],
       laborCosts: {},
+      progressSubtotal: 0,
       laborSubtotal: 0,
       laborMarkup: 0,
       laborTotal: 0,
@@ -398,6 +663,7 @@ export function CreateInvoicePage() {
     // Add standalone expenses to the total
     summary.totalExpenses += standaloneExpenses.reduce((sum, exp) => sum + exp.amount, 0);
     summary.standaloneExpenses = standaloneExpenses;
+  summary.estimateProgressRows = estimateProgressRows;
 
     // Calculate labor costs with rate overrides
     const laborCosts: { [key: string]: { hours: number; rate: number; cost: number } } = {};
@@ -415,8 +681,11 @@ export function CreateInvoicePage() {
       laborCosts[entry.user_id].rate = effectiveRate; // Keep the rate for display
     });
 
+    // Progress-billing subtotal is based on delta % * source value.
+    const progressSubtotal = estimateProgressRows.reduce((sum, row) => sum + row.billedAmount, 0);
+
     // Calculate totals with markup
-    const laborSubtotal = Object.values(laborCosts).reduce((sum, emp) => sum + emp.cost, 0);
+    const laborSubtotal = Object.values(laborCosts).reduce((sum, emp) => sum + emp.cost, 0) + progressSubtotal;
     const laborMarkup = laborSubtotal * (laborMarkupPercent / 100);
     const laborTotal = laborSubtotal + laborMarkup;
     
@@ -429,6 +698,7 @@ export function CreateInvoicePage() {
     return {
       ...summary,
       laborCosts,
+      progressSubtotal,
       laborSubtotal,
       laborMarkup,
       laborTotal,
@@ -436,7 +706,15 @@ export function CreateInvoicePage() {
       expenseTotal,
       grandTotal
     };
-  }, [timeEntries, standaloneExpenses, rateOverrides, laborMarkupPercent, expenseMarkupPercent, calculateHours]);
+  }, [
+    timeEntries,
+    standaloneExpenses,
+    estimateProgressRows,
+    rateOverrides,
+    laborMarkupPercent,
+    expenseMarkupPercent,
+    calculateHours,
+  ]);
 
   const generateClientPDF = () => {
     generateClientInvoicePDF({
@@ -445,6 +723,8 @@ export function CreateInvoicePage() {
       endDate,
       entries: timeEntries,
       standaloneExpenses,
+      estimateProgressRows: locationSummary.estimateProgressRows,
+      progressSubtotal: locationSummary.progressSubtotal,
       laborTotal: locationSummary.laborTotal,
       expenseTotal: locationSummary.expenseTotal,
       grandTotal: locationSummary.grandTotal,
@@ -482,6 +762,9 @@ export function CreateInvoicePage() {
     // Labor breakdown
     rows.push(['LABOR BREAKDOWN']);
     rows.push(['Total Hours:', locationSummary.totalHours.toFixed(2)]);
+    if (locationSummary.progressSubtotal > 0) {
+      rows.push(['Progress Billing Subtotal:', `$${locationSummary.progressSubtotal.toFixed(2)}`]);
+    }
     rows.push(['Labor Subtotal:', `$${locationSummary.laborSubtotal.toFixed(2)}`]);
     rows.push([`Labor ${laborMarkupPercent < 0 ? 'Discount' : 'Markup'} (${Math.abs(laborMarkupPercent).toFixed(1)}%):`, `$${locationSummary.laborMarkup.toFixed(2)}`]);
     rows.push(['Labor Total:', `$${locationSummary.laborTotal.toFixed(2)}`]);
@@ -516,6 +799,24 @@ export function CreateInvoicePage() {
       ]);
     });
     rows.push(['']);
+
+    if (locationSummary.estimateProgressRows.length > 0) {
+      rows.push(['PROGRESS BILLING DETAILS']);
+      rows.push(['Item', 'Source Value', 'Prior Cumulative %', 'Current Cumulative %', 'Delta % This Invoice', 'Billed Amount', 'Warning']);
+      locationSummary.estimateProgressRows.forEach((row) => {
+        rows.push([
+          row.item,
+          `$${row.sourceValue.toFixed(2)}`,
+          `${row.priorCumulativePercent.toFixed(2)}%`,
+          `${row.currentCumulativePercent.toFixed(2)}%`,
+          `${row.deltaPercent.toFixed(2)}%`,
+          `$${row.billedAmount.toFixed(2)}`,
+          row.isOverBilledWarning ? 'Over 100% cumulative' : ''
+        ]);
+      });
+      rows.push(['']);
+    }
+
     rows.push(['DETAILED TIME ENTRIES']);
     rows.push(headers);
 
@@ -638,7 +939,78 @@ export function CreateInvoicePage() {
             </div>
           </div>
 
-          <div className="md:col-span-2">
+          <div className="estimate-dropdown-container">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Estimate Version (Optional)</label>
+            <div className="relative">
+              <FileText className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+              <input
+                type="text"
+                value={estimateSearchTerm}
+                onChange={(e) => {
+                  setEstimateSearchTerm(e.target.value);
+                  setSelectedEstimateId('');
+                  setShowEstimateDropdown(true);
+                }}
+                onKeyDown={handleEstimateKeyDown}
+                onFocus={() => {
+                  fetchEstimateWorksheets();
+                  setShowEstimateDropdown(true);
+                }}
+                className="w-full pl-10 pr-10 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                placeholder="Type to search estimate versions..."
+              />
+              <ChevronDown
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 cursor-pointer"
+                size={20}
+                onClick={() => {
+                  fetchEstimateWorksheets();
+                  setShowEstimateDropdown(!showEstimateDropdown);
+                }}
+              />
+              {showEstimateDropdown && (
+                <div className="absolute z-10 w-full mt-1 bg-white rounded-lg shadow-lg border border-gray-200 max-h-60 overflow-y-auto">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedEstimateId('');
+                      setEstimateSearchTerm('');
+                      setShowEstimateDropdown(false);
+                      setHighlightedEstimateIndex(-1);
+                    }}
+                    className={`w-full px-4 py-2 text-left hover:bg-gray-50 ${
+                      highlightedEstimateIndex === -1 ? 'bg-blue-50' : ''
+                    }`}
+                  >
+                    No estimate progress billing
+                  </button>
+                  {filteredEstimates.map((estimate, index) => (
+                    <button
+                      key={estimate.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedEstimateId(estimate.id);
+                        setEstimateSearchTerm(estimate.job_name);
+                        setShowEstimateDropdown(false);
+                        setHighlightedEstimateIndex(-1);
+                      }}
+                      className={`w-full px-4 py-2 text-left hover:bg-gray-50 ${
+                        index === highlightedEstimateIndex ? 'bg-blue-50' : ''
+                      }`}
+                    >
+                      {estimate.job_name}
+                    </button>
+                  ))}
+                  {filteredEstimates.length === 0 && estimateSearchTerm && (
+                    <div className="px-4 py-3 text-sm text-gray-500">
+                      No estimate versions found matching "{estimateSearchTerm}"
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="md:col-span-3">
             <label className="block text-sm font-medium text-gray-700 mb-1">Date Range</label>
             <div className="flex gap-2">
               <div className="flex gap-2 flex-wrap">
@@ -735,8 +1107,8 @@ export function CreateInvoicePage() {
 
         <div className="mt-4 flex gap-2">
           <button
-            onClick={fetchTimeEntries}
-            disabled={!selectedLocation || isLoading}
+            onClick={handleSearchRecords}
+            disabled={(!selectedLocation && !selectedEstimateId) || isLoading}
             className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
           >
             {isLoading ? (
@@ -744,16 +1116,20 @@ export function CreateInvoicePage() {
             ) : (
               <>
                 <Search className="h-4 w-4 mr-2" />
-                Search Records
+                Load Billing Data
               </>
             )}
           </button>
-          {(selectedLocation || timeEntries.length > 0) && (
+          {(selectedLocation || selectedEstimateId || timeEntries.length > 0 || estimateProgressRows.length > 0) && (
             <button
               onClick={() => {
                 setSelectedLocation('');
+                setSelectedEstimateId('');
+                setEstimateSearchTerm('');
                 setTimeEntries([]);
                 setStandaloneExpenses([]);
+                setEstimateProgressRows([]);
+                setProgressPercentInputs({});
                 setRateOverrides({});
                 setEnableRateOverrides(false);
                 const dates = getLastMonthDates();
@@ -761,6 +1137,7 @@ export function CreateInvoicePage() {
                 setEndDate(dates.end);
                 setDatePreset('last-month');
                 setShowLocationDropdown(false);
+                setShowEstimateDropdown(false);
               }}
               className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
             >
@@ -776,11 +1153,11 @@ export function CreateInvoicePage() {
         )}
       </div>
 
-      {timeEntries.length > 0 && (
+      {(timeEntries.length > 0 || estimateProgressRows.length > 0) && (
         <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
           <div className="flex justify-between items-start mb-6">
             <div>
-              <h2 className="text-xl font-semibold text-gray-900">{selectedLocation}</h2>
+              <h2 className="text-xl font-semibold text-gray-900">{selectedLocation || 'Hybrid Invoice'}</h2>
               <p className="text-sm text-gray-500">
                 {format(parseISO(startDate), 'MMMM d, yyyy')} - {format(parseISO(endDate), 'MMMM d, yyyy')}
               </p>
@@ -804,7 +1181,7 @@ export function CreateInvoicePage() {
           </div>
 
           {/* Invoice Settings */}
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+          <div className="bg-gradient-to-br from-white to-green-50 border border-green-200 rounded-lg p-4 mb-6">
             <h3 className="text-sm font-semibold text-gray-900 mb-3">Invoice Settings</h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
@@ -863,6 +1240,12 @@ export function CreateInvoicePage() {
                 <span className="text-gray-600">Total Hours:</span>
                 <span className="font-medium">{locationSummary.totalHours.toFixed(2)}</span>
               </div>
+              {locationSummary.progressSubtotal > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Progress Billing Subtotal:</span>
+                  <span className="font-medium">${formatCurrency(locationSummary.progressSubtotal)}</span>
+                </div>
+              )}
               <div className="flex justify-between text-sm">
                 <span className="text-gray-600">Labor Subtotal:</span>
                 <span className="font-medium">${formatCurrency(locationSummary.laborSubtotal)}</span>
@@ -910,9 +1293,62 @@ export function CreateInvoicePage() {
             </div>
             
             <div className="mt-4 text-xs text-gray-500">
-              {Object.keys(locationSummary.employeeHours).length} employee(s) • {locationSummary.entries.length} time entr{locationSummary.entries.length === 1 ? 'y' : 'ies'} • {locationSummary.standaloneExpenses.length} expense record(s)
+              {Object.keys(locationSummary.employeeHours).length} employee(s) • {locationSummary.entries.length} time entr{locationSummary.entries.length === 1 ? 'y' : 'ies'} • {locationSummary.estimateProgressRows.length} progress row(s) • {locationSummary.standaloneExpenses.length} expense record(s)
             </div>
           </div>
+
+          {locationSummary.estimateProgressRows.length > 0 && (
+            <div className="space-y-4 mb-6">
+              <h3 className="text-lg font-medium text-gray-900">Progress Billing (Estimate Rows)</h3>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200 border rounded-lg">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
+                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Source Value</th>
+                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Prior Cumulative %</th>
+                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Current Cumulative %</th>
+                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Delta % This Invoice</th>
+                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Billed Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {locationSummary.estimateProgressRows.map((row) => (
+                      <tr key={row.id} className={row.isOverBilledWarning ? 'bg-amber-50' : ''}>
+                        <td className="px-4 py-3 text-sm text-gray-900">{row.item}</td>
+                        <td className="px-4 py-3 text-sm text-right text-gray-700">${formatCurrency(row.sourceValue)}</td>
+                        <td className="px-4 py-3 text-sm text-right text-gray-700">{row.priorCumulativePercent.toFixed(2)}%</td>
+                        <td className="px-4 py-3 text-right">
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={progressPercentInputs[row.id] ?? row.currentCumulativePercent}
+                            onChange={(e) => updateProgressPercent(row.id, e.target.value)}
+                            onBlur={() => commitProgressPercent(row.id)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                commitProgressPercent(row.id);
+                                e.currentTarget.blur();
+                              }
+                            }}
+                            className="w-28 px-2 py-1 text-sm text-right border rounded focus:ring-2 focus:ring-blue-500"
+                          />
+                        </td>
+                        <td className="px-4 py-3 text-sm text-right text-gray-700">{row.deltaPercent.toFixed(2)}%</td>
+                        <td className="px-4 py-3 text-sm text-right font-semibold text-blue-600">${formatCurrency(row.billedAmount)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {locationSummary.estimateProgressRows.some((row) => row.isOverBilledWarning) && (
+                <p className="text-sm text-amber-700">
+                  Warning: one or more rows exceed 100% cumulative billing. This is allowed but should be reviewed before sending.
+                </p>
+              )}
+            </div>
+          )}
 
           <div className="space-y-4">
             <h3 className="text-lg font-medium text-gray-900">Employee Labor Details</h3>
@@ -1022,7 +1458,7 @@ export function CreateInvoicePage() {
         </div>
       )}
 
-      {timeEntries.length === 0 && !isLoading && selectedLocation && (
+      {timeEntries.length === 0 && estimateProgressRows.length === 0 && !isLoading && (selectedLocation || selectedEstimateId) && (
         <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
           <p className="text-gray-500">No records found for the selected criteria.</p>
         </div>

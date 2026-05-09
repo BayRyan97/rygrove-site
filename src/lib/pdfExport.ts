@@ -753,6 +753,13 @@ interface InvoiceData {
   endDate: string;
   entries: InvoiceEntry[];
   standaloneExpenses: StandaloneExpense[];
+  estimateProgressRows?: {
+    item: string;
+    sourceValue: number;
+    currentCumulativePercent: number;
+    billedAmount: number;
+  }[];
+  progressSubtotal?: number;
   laborTotal: number;
   expenseTotal: number;
   grandTotal: number;
@@ -862,6 +869,67 @@ export const generateClientInvoicePDF = (invoiceData: InvoiceData) => {
   });
 
   yPosition = (doc as any).lastAutoTable.finalY + 10;
+
+  const progressRows = (invoiceData.estimateProgressRows || []).filter(
+    (row) => row.billedAmount > 0
+  );
+
+  if (progressRows.length > 0) {
+    doc.setFontSize(12);
+    doc.setFont('Helvetica', 'bold');
+    doc.setTextColor(17, 24, 39);
+    doc.text('Progress Billing', 15, yPosition);
+    yPosition += 8;
+
+    const progressHeaders = ['Item', 'Line Value', 'Cumulative %', 'This Invoice'];
+    const progressBody: (string | number)[][] = progressRows.map((row) => [
+      row.item,
+      formatCurrency(row.sourceValue),
+      `${row.currentCumulativePercent.toFixed(2)}%`,
+      formatCurrency(row.billedAmount)
+    ]);
+
+    const progressTotal =
+      invoiceData.progressSubtotal ?? progressRows.reduce((sum, row) => sum + row.billedAmount, 0);
+
+    progressBody.push([
+      { content: 'Progress Billing Total', colSpan: 3, styles: { fontStyle: 'bold', halign: 'right' } },
+      { content: formatCurrency(progressTotal), styles: { fontStyle: 'bold', fillColor: [249, 250, 251] } }
+    ] as any);
+
+    autoTable(doc, {
+      head: [progressHeaders],
+      body: progressBody,
+      startY: yPosition,
+      margin: { left: 15, right: 15 },
+      styles: {
+        fontSize: 8,
+        cellPadding: 4,
+        textColor: 55,
+        lineColor: 229,
+        fillColor: 255,
+        halign: 'left',
+        overflow: 'linebreak'
+      },
+      headStyles: {
+        fillColor: [37, 99, 235],
+        textColor: 255,
+        fontStyle: 'bold',
+        halign: 'left'
+      },
+      alternateRowStyles: {
+        fillColor: [249, 250, 251]
+      },
+      columnStyles: {
+        0: { cellWidth: 90 },
+        1: { halign: 'right', cellWidth: 30 },
+        2: { halign: 'right', cellWidth: 30 },
+        3: { halign: 'right', cellWidth: 30 }
+      }
+    });
+
+    yPosition = (doc as any).lastAutoTable.finalY + 10;
+  }
 
   // Expenses section (if any)
   const allExpenses: Array<{
