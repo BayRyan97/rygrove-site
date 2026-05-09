@@ -1039,7 +1039,7 @@ function AdminPage() {
           </form>
         </div>
       ) : activeView === 'users' ? (
-        <div className="bg-white rounded-lg shadow overflow-hidden">
+        <div className="bg-white rounded-lg shadow overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
@@ -1203,8 +1203,8 @@ function AdminPage() {
           </table>
         </div>
       ) : (
-        <div className="bg-white rounded-lg shadow overflow-hidden">
-          <div className="max-h-[calc(100vh-16rem)] overflow-auto">
+        <div className="bg-white rounded-lg shadow overflow-x-auto">
+          <div className="max-h-[calc(100vh-16rem)] overflow-y-auto overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50 sticky top-0">
                 <tr>
