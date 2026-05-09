@@ -119,6 +119,7 @@ export function CreateInvoicePage() {
   const [laborMarkupPercent, setLaborMarkupPercent] = useState(20);
   const [expenseMarkupPercent, setExpenseMarkupPercent] = useState(15);
   const [enableRateOverrides, setEnableRateOverrides] = useState(false);
+  const [excludeLaborCosts, setExcludeLaborCosts] = useState(false);
   const [rateOverrides, setRateOverrides] = useState<{[userId: string]: number}>({});
 
   useEffect(() => {
@@ -670,7 +671,9 @@ export function CreateInvoicePage() {
     
     timeEntries.forEach(entry => {
       const hours = calculateHours(entry);
-      const effectiveRate = rateOverrides[entry.user_id] ?? entry.rate ?? 0;
+      const effectiveRate = excludeLaborCosts
+        ? 0
+        : (rateOverrides[entry.user_id] ?? entry.rate ?? 0);
       const cost = hours * effectiveRate;
       
       if (!laborCosts[entry.user_id]) {
@@ -714,6 +717,7 @@ export function CreateInvoicePage() {
     laborMarkupPercent,
     expenseMarkupPercent,
     calculateHours,
+    excludeLaborCosts,
   ]);
 
   const generateClientPDF = () => {
@@ -789,7 +793,7 @@ export function CreateInvoicePage() {
     Object.entries(locationSummary.laborCosts).forEach(([userId, labor]) => {
       const entry = timeEntries.find(e => e.user_id === userId);
       const baseRate = entry?.rate ?? 0;
-      const billingRate = rateOverrides[userId] ?? baseRate;
+      const billingRate = excludeLaborCosts ? 0 : (rateOverrides[userId] ?? baseRate);
       rows.push([
         entry?.full_name || 'Unknown',
         labor.hours.toFixed(2),
@@ -824,7 +828,7 @@ export function CreateInvoicePage() {
     locationSummary.entries.forEach(entry => {
       const hours = calculateHours(entry);
       const baseRate = entry.rate ?? 0;
-      const billingRate = rateOverrides[entry.user_id] ?? baseRate;
+      const billingRate = excludeLaborCosts ? 0 : (rateOverrides[entry.user_id] ?? baseRate);
       const laborCost = hours * billingRate;
       
       const baseRow = [
@@ -1132,6 +1136,7 @@ export function CreateInvoicePage() {
                 setProgressPercentInputs({});
                 setRateOverrides({});
                 setEnableRateOverrides(false);
+                setExcludeLaborCosts(false);
                 const dates = getLastMonthDates();
                 setStartDate(dates.start);
                 setEndDate(dates.end);
@@ -1216,15 +1221,31 @@ export function CreateInvoicePage() {
                   step="0.1"
                 />
               </div>
-              <div className="flex items-end">
+              <div className="flex flex-col justify-end gap-2">
                 <label className="flex items-center cursor-pointer">
                   <input
                     type="checkbox"
                     checked={enableRateOverrides}
                     onChange={(e) => setEnableRateOverrides(e.target.checked)}
-                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    disabled={excludeLaborCosts}
+                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 disabled:opacity-50"
                   />
                   <span className="ml-2 text-sm text-gray-700">Enable per-employee rate overrides</span>
+                </label>
+                <label className="flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={excludeLaborCosts}
+                    onChange={(e) => {
+                      const isChecked = e.target.checked;
+                      setExcludeLaborCosts(isChecked);
+                      if (isChecked) {
+                        setEnableRateOverrides(false);
+                      }
+                    }}
+                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                  />
+                  <span className="ml-2 text-sm text-gray-700">Do not include labor costs</span>
                 </label>
               </div>
             </div>
@@ -1382,6 +1403,7 @@ export function CreateInvoicePage() {
                       const entry = timeEntries.find(e => e.user_id === userId);
                       const baseRate = entry?.rate ?? 0;
                       const overrideRate = rateOverrides[userId];
+                      const displayRate = excludeLaborCosts ? 0 : (overrideRate ?? baseRate);
                       
                       return (
                         <tr key={userId}>
@@ -1397,7 +1419,7 @@ export function CreateInvoicePage() {
                           <td className="px-4 py-3 text-right">
                             <input
                               type="number"
-                              value={overrideRate ?? baseRate}
+                              value={displayRate}
                               onChange={(e) => {
                                 const val = parseFloat(e.target.value);
                                 if (!isNaN(val) && val >= 0) {
@@ -1407,7 +1429,8 @@ export function CreateInvoicePage() {
                                   }));
                                 }
                               }}
-                              className="w-24 px-2 py-1 text-sm text-right border rounded focus:ring-2 focus:ring-blue-500"
+                              disabled={excludeLaborCosts}
+                              className="w-24 px-2 py-1 text-sm text-right border rounded focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-400"
                               step="0.01"
                               min="0"
                             />
