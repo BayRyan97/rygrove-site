@@ -351,15 +351,18 @@ export function CreateInvoicePage() {
       const priorPercentByItem: { [itemId: string]: number } = {};
       const { data: priorData, error: priorError } = await supabase
         .from('invoice_estimate_lines')
-        .select('source_item_id, current_cumulative_percent')
+        .select('source_item_id, current_cumulative_percent, created_at')
         .eq('estimate_worksheet_id', estimateId);
 
       if (!priorError && priorData) {
-        priorData.forEach((row: any) => {
-          const itemId = row.source_item_id;
-          const pct = Number(row.current_cumulative_percent) || 0;
-          priorPercentByItem[itemId] = Math.max(priorPercentByItem[itemId] || 0, pct);
-        });
+        priorData
+          .slice()
+          .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+          .forEach((row: any) => {
+            const itemId = row.source_item_id;
+            if (priorPercentByItem[itemId] !== undefined) return;
+            priorPercentByItem[itemId] = Number(row.current_cumulative_percent) || 0;
+          });
       }
 
       const nextRows: EstimateProgressRow[] = items.map((item: any, index: number) => {
@@ -434,7 +437,7 @@ export function CreateInvoicePage() {
     );
   };
 
-  const commitProgressPercent = (rowId: string) => {
+  const commitProgressPercent = async (rowId: string) => {
     const rawInput = progressPercentInputs[rowId];
     if (rawInput === undefined) return;
 
@@ -449,27 +452,159 @@ export function CreateInvoicePage() {
     }
 
     const sanitized = Math.max(0, parsed);
+    const nextRows = estimateProgressRows.map((row) => {
+      if (row.id !== rowId) return row;
 
-    setEstimateProgressRows((prevRows) =>
-      prevRows.map((row) => {
-        if (row.id !== rowId) return row;
+      const deltaPercent = Math.max(0, sanitized - row.priorCumulativePercent);
+      return {
+        ...row,
+        currentCumulativePercent: sanitized,
+        deltaPercent,
+        billedAmount: (deltaPercent / 100) * row.sourceValue,
+        isOverBilledWarning: sanitized > 100,
+      };
+    });
 
-        const deltaPercent = Math.max(0, sanitized - row.priorCumulativePercent);
-        return {
-          ...row,
-          currentCumulativePercent: sanitized,
-          deltaPercent,
-          billedAmount: (deltaPercent / 100) * row.sourceValue,
-          isOverBilledWarning: sanitized > 100,
-        };
-      })
-    );
+    setEstimateProgressRows(nextRows);
 
     setProgressPercentInputs((prev) => {
       const next = { ...prev };
       delete next[rowId];
       return next;
     });
+
+    try {
+      await persistProgressBillingSnapshot(nextRows);
+    } catch (error) {
+      console.error('Error auto-saving progress billing snapshot:', error);
+    }
+  };
+
+  const persistProgressBillingSnapshot = async (
+    progressRowsOverride: EstimateProgressRow[] = estimateProgressRows,
+    notifyOnError = false
+  ) => {
+    if (!selectedEstimateId || progressRowsOverride.length === 0) {
+      return;
+    }
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError) throw userError;
+    if (!user) throw new Error('You must be signed in to save invoice progress billing.');
+
+    const invoiceLocation = selectedLocation || estimateSearchTerm || null;
+    const progressSubtotal = progressRowsOverride.reduce((sum, row) => sum + row.billedAmount, 0);
+    const laborSubtotal = Object.values(
+      timeEntries.reduce<{ [key: string]: number }>((acc, entry) => {
+        const hours = calculateHours(entry);
+        const effectiveRate = excludeLaborCosts
+          ? 0
+          : (rateOverrides[entry.user_id] ?? entry.rate ?? 0);
+        acc[entry.user_id] = (acc[entry.user_id] || 0) + hours * effectiveRate;
+        return acc;
+      }, {})
+    ).reduce((sum, cost) => sum + cost, 0) + progressSubtotal;
+    const laborMarkup = laborSubtotal * (laborMarkupPercent / 100);
+    const laborTotal = laborSubtotal + laborMarkup;
+    const expenseSubtotal =
+      timeEntries.reduce((sum, entry) => sum + entry.expenses.reduce((entrySum, exp) => entrySum + exp.amount, 0), 0) +
+      standaloneExpenses.reduce((sum, exp) => sum + exp.amount, 0);
+    const expenseMarkup = expenseSubtotal * (expenseMarkupPercent / 100);
+    const expenseTotal = expenseSubtotal + expenseMarkup;
+    const grandTotal = laborTotal + expenseTotal;
+
+    const { data: existingInvoices, error: existingInvoiceError } = await supabase
+      .from('invoices')
+      .select('id')
+      .eq('created_by', user.id)
+      .eq('location', invoiceLocation)
+      .eq('estimate_worksheet_id', selectedEstimateId)
+      .eq('start_date', startDate)
+      .eq('end_date', endDate)
+      .eq('status', 'draft')
+      .order('updated_at', { ascending: false })
+      .limit(1);
+
+    if (existingInvoiceError) throw existingInvoiceError;
+
+    let invoiceId = existingInvoices?.[0]?.id as string | undefined;
+
+    if (!invoiceId) {
+      const { data: invoice, error: invoiceError } = await supabase
+        .from('invoices')
+        .insert({
+          created_by: user.id,
+          location: invoiceLocation,
+          estimate_worksheet_id: selectedEstimateId,
+          start_date: startDate,
+          end_date: endDate,
+          labor_markup_percent: laborMarkupPercent,
+          expense_markup_percent: expenseMarkupPercent,
+          labor_subtotal: laborSubtotal,
+          progress_subtotal: progressSubtotal,
+          expense_subtotal: expenseSubtotal,
+          labor_total: laborTotal,
+          expense_total: expenseTotal,
+          grand_total: grandTotal,
+          status: 'draft',
+        })
+        .select('id')
+        .single();
+
+      if (invoiceError) throw invoiceError;
+      invoiceId = invoice.id;
+    } else {
+      const { error: updateError } = await supabase
+        .from('invoices')
+        .update({
+          labor_markup_percent: laborMarkupPercent,
+          expense_markup_percent: expenseMarkupPercent,
+          labor_subtotal: laborSubtotal,
+          progress_subtotal: progressSubtotal,
+          expense_subtotal: expenseSubtotal,
+          labor_total: laborTotal,
+          expense_total: expenseTotal,
+          grand_total: grandTotal,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', invoiceId);
+
+      if (updateError) throw updateError;
+    }
+
+    const { error: deleteLinesError } = await supabase
+      .from('invoice_estimate_lines')
+      .delete()
+      .eq('invoice_id', invoiceId);
+
+    if (deleteLinesError) throw deleteLinesError;
+
+    const lineRows = progressRowsOverride.map((row) => ({
+      invoice_id: invoiceId,
+      estimate_worksheet_id: selectedEstimateId,
+      source_item_id: row.sourceItemId,
+      source_item_label: row.item,
+      source_value: row.sourceValue,
+      prior_cumulative_percent: row.priorCumulativePercent,
+      current_cumulative_percent: row.currentCumulativePercent,
+      delta_percent: row.deltaPercent,
+      billed_amount: row.billedAmount,
+      warning_over_100: row.isOverBilledWarning,
+    }));
+
+    const { error: lineError } = await supabase
+      .from('invoice_estimate_lines')
+      .insert(lineRows);
+
+    if (lineError) throw lineError;
+
+    if (notifyOnError) {
+      console.info('Invoice snapshot saved');
+    }
   };
 
   const fetchTimeEntries = async () => {
@@ -720,7 +855,14 @@ export function CreateInvoicePage() {
     excludeLaborCosts,
   ]);
 
-  const generateClientPDF = () => {
+  const generateClientPDF = async () => {
+    try {
+      await persistProgressBillingSnapshot(locationSummary.estimateProgressRows, true);
+    } catch (error) {
+      console.error('Error saving invoice progress snapshot:', error);
+      alert('Invoice generated, but the progress percentage could not be saved.');
+    }
+
     generateClientInvoicePDF({
       location: selectedLocation,
       startDate,
@@ -732,11 +874,18 @@ export function CreateInvoicePage() {
       laborTotal: locationSummary.laborTotal,
       expenseTotal: locationSummary.expenseTotal,
       grandTotal: locationSummary.grandTotal,
-      totalHours: locationSummary.totalHours
+      totalHours: locationSummary.totalHours,
     });
   };
 
-  const generateExcel = () => {
+  const generateExcel = async () => {
+    try {
+      await persistProgressBillingSnapshot(locationSummary.estimateProgressRows, true);
+    } catch (error) {
+      console.error('Error saving invoice progress snapshot:', error);
+      alert('Report generated, but the progress percentage could not be saved.');
+    }
+
     const headers = [
       'Date',
       'Employee',
