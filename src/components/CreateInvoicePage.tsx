@@ -426,7 +426,16 @@ export function CreateInvoicePage() {
         const priorCumulativePercent = resolved?.prior ?? 0;
         const currentCumulativePercent = resolved?.current ?? priorCumulativePercent;
         const deltaPercent = resolved?.delta ?? 0;
-        const billedAmount = resolved?.billed ?? (deltaPercent / 100) * sourceValue;
+        const isNoChangeSnapshot =
+          currentCumulativePercent === priorCumulativePercent &&
+          deltaPercent <= 0 &&
+          (resolved?.billed ?? 0) <= 0;
+        const billedAmount =
+          (resolved?.billed ?? 0) > 0
+            ? (resolved?.billed ?? 0)
+            : isNoChangeSnapshot
+              ? (priorCumulativePercent / 100) * sourceValue
+              : (deltaPercent / 100) * sourceValue;
         const isOverBilledWarning = resolved?.warning ?? currentCumulativePercent > 100;
 
         return {
