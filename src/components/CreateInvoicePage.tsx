@@ -480,6 +480,33 @@ export function CreateInvoicePage() {
     }
   };
 
+  const resetProgressPercent = async (rowId: string) => {
+    const nextRows = estimateProgressRows.map((row) => {
+      if (row.id !== rowId) return row;
+
+      return {
+        ...row,
+        currentCumulativePercent: 0,
+        deltaPercent: 0,
+        billedAmount: 0,
+        isOverBilledWarning: false,
+      };
+    });
+
+    setEstimateProgressRows(nextRows);
+    setProgressPercentInputs((prev) => {
+      const next = { ...prev };
+      delete next[rowId];
+      return next;
+    });
+
+    try {
+      await persistProgressBillingSnapshot(nextRows);
+    } catch (error) {
+      console.error('Error resetting progress billing snapshot:', error);
+    }
+  };
+
   const persistProgressBillingSnapshot = async (
     progressRowsOverride: EstimateProgressRow[] = estimateProgressRows,
     notifyOnError = false
@@ -1478,6 +1505,7 @@ export function CreateInvoicePage() {
                       <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Source Value</th>
                       <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Prior Cumulative %</th>
                       <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Current Cumulative %</th>
+                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
                       <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Delta % This Invoice</th>
                       <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Billed Amount</th>
                     </tr>
@@ -1504,6 +1532,15 @@ export function CreateInvoicePage() {
                             }}
                             className="w-28 px-2 py-1 text-sm text-right border rounded focus:ring-2 focus:ring-blue-500"
                           />
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <button
+                            type="button"
+                            onClick={() => resetProgressPercent(row.id)}
+                            className="px-3 py-1 text-xs font-medium text-gray-600 border border-gray-300 rounded hover:bg-gray-50"
+                          >
+                            Reset
+                          </button>
                         </td>
                         <td className="px-4 py-3 text-sm text-right text-gray-700">{row.deltaPercent.toFixed(2)}%</td>
                         <td className="px-4 py-3 text-sm text-right font-semibold text-blue-600">${formatCurrency(row.billedAmount)}</td>
