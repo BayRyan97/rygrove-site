@@ -750,6 +750,7 @@ interface StandaloneExpense {
 interface InvoiceData {
   location: string;
   invoiceNumber?: string | null;
+  showLaborSummary?: boolean;
   startDate: string;
   endDate: string;
   entries: InvoiceEntry[];
@@ -833,64 +834,66 @@ export const generateClientInvoicePDF = (invoiceData: InvoiceData) => {
   doc.line(15, yPosition, pageWidth - 15, yPosition);
   yPosition += 6;
 
-  // Labor summary section
-  doc.setFontSize(12);
-  doc.setFont('Helvetica', 'bold');
-  doc.setTextColor(17, 24, 39); // gray-900
-  doc.text('Labor Summary', 15, yPosition);
-  yPosition += 8;
+  if (invoiceData.showLaborSummary !== false) {
+    // Labor summary section
+    doc.setFontSize(12);
+    doc.setFont('Helvetica', 'bold');
+    doc.setTextColor(17, 24, 39); // gray-900
+    doc.text('Labor Summary', 15, yPosition);
+    yPosition += 8;
 
-  // Group entries by employee
-  const employeeHours: { [name: string]: number } = {};
-  invoiceData.entries.forEach(entry => {
-    const hours = calculateDuration(entry.start_time, entry.end_time, entry.lunch_break);
-    employeeHours[entry.full_name] = (employeeHours[entry.full_name] || 0) + hours;
-  });
-
-  // Create labor table (NO RATES)
-  const laborHeaders = ['Employee', 'Hours'];
-  const laborRows: string[][] = [];
-
-  Object.entries(employeeHours)
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .forEach(([name, hours]) => {
-      laborRows.push([name, formatHours(hours)]);
+    // Group entries by employee
+    const employeeHours: { [name: string]: number } = {};
+    invoiceData.entries.forEach(entry => {
+      const hours = calculateDuration(entry.start_time, entry.end_time, entry.lunch_break);
+      employeeHours[entry.full_name] = (employeeHours[entry.full_name] || 0) + hours;
     });
 
-  // Add total row
-  laborRows.push([
-    { content: 'Total Labor', styles: { fontStyle: 'bold' } },
-    { content: formatCurrency(invoiceData.laborTotal), styles: { fontStyle: 'bold', fillColor: [249, 250, 251] } }
-  ] as any);
+    // Create labor table (NO RATES)
+    const laborHeaders = ['Employee', 'Hours'];
+    const laborRows: string[][] = [];
 
-  autoTable(doc, {
-    head: [laborHeaders],
-    body: laborRows,
-    startY: yPosition,
-    margin: { left: 15, right: 15 },
-    styles: {
-      fontSize: 9,
-      cellPadding: 5,
-      textColor: 55,
-      lineColor: 229,
-      fillColor: 255,
-      halign: 'left'
-    },
-    headStyles: {
-      fillColor: [37, 99, 235], // blue-600
-      textColor: 255,
-      fontStyle: 'bold'
-    },
-    alternateRowStyles: {
-      fillColor: [249, 250, 251] // gray-50
-    },
-    columnStyles: {
-      0: { cellWidth: pageWidth - 60 },
-      1: { halign: 'right', cellWidth: 30 }
-    }
-  });
+    Object.entries(employeeHours)
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .forEach(([name, hours]) => {
+        laborRows.push([name, formatHours(hours)]);
+      });
 
-  yPosition = (doc as any).lastAutoTable.finalY + 10;
+    // Add total row
+    laborRows.push([
+      { content: 'Total Labor', styles: { fontStyle: 'bold' } },
+      { content: formatCurrency(invoiceData.laborTotal), styles: { fontStyle: 'bold', fillColor: [249, 250, 251] } }
+    ] as any);
+
+    autoTable(doc, {
+      head: [laborHeaders],
+      body: laborRows,
+      startY: yPosition,
+      margin: { left: 15, right: 15 },
+      styles: {
+        fontSize: 9,
+        cellPadding: 5,
+        textColor: 55,
+        lineColor: 229,
+        fillColor: 255,
+        halign: 'left'
+      },
+      headStyles: {
+        fillColor: [37, 99, 235], // blue-600
+        textColor: 255,
+        fontStyle: 'bold'
+      },
+      alternateRowStyles: {
+        fillColor: [249, 250, 251] // gray-50
+      },
+      columnStyles: {
+        0: { cellWidth: pageWidth - 60 },
+        1: { halign: 'right', cellWidth: 30 }
+      }
+    });
+
+    yPosition = (doc as any).lastAutoTable.finalY + 10;
+  }
 
   const progressRows = invoiceData.estimateProgressRows || [];
 

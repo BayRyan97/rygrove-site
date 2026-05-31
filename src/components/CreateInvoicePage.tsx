@@ -1103,6 +1103,7 @@ export function CreateInvoicePage() {
   ]);
 
   const generateClientPDF = async () => {
+    const isEstimateOnlyProgressBilling = !selectedLocation.trim() && !!selectedEstimateId;
     let finalizedInvoiceNumber: string | null = null;
     try {
       const snapshot = await persistProgressBillingSnapshot(locationSummary.estimateProgressRows, true, 'finalized');
@@ -1116,6 +1117,7 @@ export function CreateInvoicePage() {
     generateClientInvoicePDF({
       location: estimateSearchTerm || selectedLocation,
       invoiceNumber: finalizedInvoiceNumber,
+      showLaborSummary: !isEstimateOnlyProgressBilling,
       startDate,
       endDate,
       entries: timeEntries,
