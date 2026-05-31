@@ -521,7 +521,6 @@ export function CreateInvoicePage() {
       .from('invoices')
       .select('id')
       .eq('created_by', user.id)
-      .eq('location', invoiceLocation)
       .eq('estimate_worksheet_id', selectedEstimateId)
       .eq('start_date', startDate)
       .eq('end_date', endDate)
@@ -561,6 +560,7 @@ export function CreateInvoicePage() {
       const { error: updateError } = await supabase
         .from('invoices')
         .update({
+          location: invoiceLocation,
           labor_markup_percent: laborMarkupPercent,
           expense_markup_percent: expenseMarkupPercent,
           labor_subtotal: laborSubtotal,
