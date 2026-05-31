@@ -347,11 +347,21 @@ export function CreateInvoicePage() {
 
       const items = Array.isArray(estimateData.items) ? estimateData.items : [];
 
-      // If persistence tables are not deployed yet, this query will fail and fallback to 0% prior billing.
-      const priorPercentByItem: { [itemId: string]: number } = {};
+      // If persistence tables are not deployed yet, this query will fail and fallback to 0% defaults.
+      const latestLineByItem: {
+        [itemId: string]: {
+          prior: number;
+          current: number;
+          delta: number;
+          billed: number;
+          warning: boolean;
+        };
+      } = {};
       const { data: priorData, error: priorError } = await supabase
         .from('invoice_estimate_lines')
-        .select('source_item_id, current_cumulative_percent, created_at')
+        .select(
+          'source_item_id, prior_cumulative_percent, current_cumulative_percent, delta_percent, billed_amount, warning_over_100, created_at'
+        )
         .eq('estimate_worksheet_id', estimateId);
 
       if (!priorError && priorData) {
@@ -360,19 +370,34 @@ export function CreateInvoicePage() {
           .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
           .forEach((row: any) => {
             const itemId = row.source_item_id;
-            if (priorPercentByItem[itemId] !== undefined) return;
-            priorPercentByItem[itemId] = Number(row.current_cumulative_percent) || 0;
+            if (latestLineByItem[itemId] !== undefined) return;
+
+            const prior = Number(row.prior_cumulative_percent) || 0;
+            const current = Number(row.current_cumulative_percent);
+            const safeCurrent = Number.isFinite(current) ? current : prior;
+            const delta = Number(row.delta_percent);
+            const safeDelta = Number.isFinite(delta) ? delta : Math.max(0, safeCurrent - prior);
+            const billed = Number(row.billed_amount);
+
+            latestLineByItem[itemId] = {
+              prior,
+              current: safeCurrent,
+              delta: safeDelta,
+              billed: Number.isFinite(billed) ? billed : 0,
+              warning: Boolean(row.warning_over_100) || safeCurrent > 100,
+            };
           });
       }
 
       const nextRows: EstimateProgressRow[] = items.map((item: any, index: number) => {
         const itemId = String(item.id || `item-${index + 1}`);
         const sourceValue = Number(item.cost) || 0;
-        const priorCumulativePercent = priorPercentByItem[itemId] || 0;
-        const currentCumulativePercent = priorCumulativePercent;
-        const deltaPercent = 0;
-        const billedAmount = 0;
-        const isOverBilledWarning = currentCumulativePercent > 100;
+        const latest = latestLineByItem[itemId];
+        const priorCumulativePercent = latest?.prior ?? 0;
+        const currentCumulativePercent = latest?.current ?? priorCumulativePercent;
+        const deltaPercent = latest?.delta ?? 0;
+        const billedAmount = latest?.billed ?? (deltaPercent / 100) * sourceValue;
+        const isOverBilledWarning = latest?.warning ?? currentCumulativePercent > 100;
 
         return {
           id: `${estimateId}-${itemId}`,
