@@ -39,6 +39,8 @@ interface EstimateWorksheet {
   job_name: string;
   total: number;
   updated_at: string;
+  overhead_percentage?: number;
+  overhead_amount?: number;
   items: Array<{
     id: string;
     item: string;
@@ -393,13 +395,27 @@ export function CreateInvoicePage() {
     try {
       const { data: estimateData, error: estimateError } = await supabase
         .from('estimate_worksheets')
-        .select('id, job_name, total, items')
+        .select('id, job_name, total, items, overhead_percentage, overhead_amount')
         .eq('id', estimateId)
         .single();
 
       if (estimateError) throw estimateError;
 
-      const items = Array.isArray(estimateData.items) ? estimateData.items : [];
+      const baseItems = Array.isArray(estimateData.items) ? estimateData.items : [];
+      const overheadPercentage = Number(estimateData.overhead_percentage);
+      const overheadAmount = Number(estimateData.overhead_amount);
+      const hasOverhead = Number.isFinite(overheadAmount) && overheadAmount > 0;
+
+      const items = hasOverhead
+        ? [
+            ...baseItems,
+            {
+              id: '__overhead__',
+              item: `Overhead & Profit (${Number.isFinite(overheadPercentage) ? overheadPercentage.toFixed(2) : '0.00'}%)`,
+              cost: overheadAmount,
+            },
+          ]
+        : baseItems;
 
       // If persistence tables are not deployed yet, this query will fail and fallback to 0% defaults.
       const latestLineByItem: {
