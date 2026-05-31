@@ -138,6 +138,7 @@ export function CreateInvoicePage() {
   const [expenseMarkupPercent, setExpenseMarkupPercent] = useState(15);
   const [enableRateOverrides, setEnableRateOverrides] = useState(false);
   const [excludeLaborCosts, setExcludeLaborCosts] = useState(false);
+  const [invoiceAmountPaidInput, setInvoiceAmountPaidInput] = useState('');
   const [rateOverrides, setRateOverrides] = useState<{[userId: string]: number}>({});
   const [invoiceVault, setInvoiceVault] = useState<SavedInvoice[]>([]);
   const [selectedVaultInvoiceId, setSelectedVaultInvoiceId] = useState('');
@@ -676,7 +677,7 @@ export function CreateInvoicePage() {
     notifyOnError = false,
     targetStatus: 'draft' | 'finalized' = 'draft'
   ): Promise<{ id: string; invoiceNumber: string | null } | null> => {
-    if (!selectedEstimateId || progressRowsOverride.length === 0) {
+    if (!selectedEstimateId && !selectedLocation.trim()) {
       return null;
     }
 
@@ -711,37 +712,62 @@ export function CreateInvoicePage() {
     const expenseMarkup = expenseSubtotal * (expenseMarkupPercent / 100);
     const expenseTotal = expenseSubtotal + expenseMarkup;
     const grandTotal = laborTotal + expenseTotal;
+    const parsedInvoiceAmountPaid = Number.parseFloat(invoiceAmountPaidInput);
+    const hasExplicitAmountPaid = Number.isFinite(parsedInvoiceAmountPaid) && parsedInvoiceAmountPaid >= 0;
+    const explicitAmountPaid = hasExplicitAmountPaid
+      ? Math.min(grandTotal, Math.max(0, parsedInvoiceAmountPaid))
+      : 0;
 
     let invoiceId: string | undefined;
     let invoiceNumber: string | null = null;
+    let existingAmountPaid = 0;
+
+    const getPaymentStatus = (amountPaid: number): 'unpaid' | 'partial' | 'paid' => {
+      if (amountPaid <= 0) return 'unpaid';
+      if (amountPaid >= grandTotal) return 'paid';
+      return 'partial';
+    };
 
     if (targetStatus === 'draft') {
-      const { data: existingInvoices, error: existingInvoiceError } = await supabase
+      let draftQuery = supabase
         .from('invoices')
-        .select('id, invoice_number')
+        .select('id, invoice_number, amount_paid')
         .eq('created_by', user.id)
-        .eq('estimate_worksheet_id', selectedEstimateId)
         .eq('start_date', startDate)
         .eq('end_date', endDate)
         .eq('status', 'draft')
         .order('updated_at', { ascending: false })
         .limit(1);
 
+      draftQuery = selectedEstimateId
+        ? draftQuery.eq('estimate_worksheet_id', selectedEstimateId)
+        : draftQuery.is('estimate_worksheet_id', null);
+
+      draftQuery = invoiceLocation
+        ? draftQuery.eq('location', invoiceLocation)
+        : draftQuery.is('location', null);
+
+      const { data: existingInvoices, error: existingInvoiceError } = await draftQuery;
+
       if (existingInvoiceError) throw existingInvoiceError;
       invoiceId = existingInvoices?.[0]?.id as string | undefined;
       invoiceNumber = (existingInvoices?.[0] as any)?.invoice_number ?? null;
+      existingAmountPaid = Number((existingInvoices?.[0] as any)?.amount_paid) || 0;
     } else {
       let finalizedQuery = supabase
         .from('invoices')
-        .select('id, invoice_number')
+        .select('id, invoice_number, amount_paid')
         .eq('created_by', user.id)
-        .eq('estimate_worksheet_id', selectedEstimateId)
         .eq('start_date', startDate)
         .eq('end_date', endDate)
         .eq('status', 'finalized')
         .lte('amount_paid', 0)
         .order('updated_at', { ascending: false })
         .limit(1);
+
+      finalizedQuery = selectedEstimateId
+        ? finalizedQuery.eq('estimate_worksheet_id', selectedEstimateId)
+        : finalizedQuery.is('estimate_worksheet_id', null);
 
       finalizedQuery = invoiceLocation ? finalizedQuery.eq('location', invoiceLocation) : finalizedQuery.is('location', null);
 
@@ -750,7 +776,15 @@ export function CreateInvoicePage() {
 
       invoiceId = existingFinalized?.[0]?.id as string | undefined;
       invoiceNumber = (existingFinalized?.[0] as any)?.invoice_number ?? null;
+      existingAmountPaid = Number((existingFinalized?.[0] as any)?.amount_paid) || 0;
     }
+
+    const nextAmountPaid =
+      targetStatus === 'finalized'
+        ? (hasExplicitAmountPaid ? explicitAmountPaid : existingAmountPaid)
+        : existingAmountPaid;
+    const nextPaymentStatus = getPaymentStatus(nextAmountPaid);
+    const nextPaidAt = nextPaymentStatus === 'paid' ? new Date().toISOString() : null;
 
     if (!invoiceId) {
       const { data: invoice, error: invoiceError } = await supabase
@@ -758,7 +792,7 @@ export function CreateInvoicePage() {
         .insert({
           created_by: user.id,
           location: invoiceLocation,
-          estimate_worksheet_id: selectedEstimateId,
+          estimate_worksheet_id: selectedEstimateId || null,
           start_date: startDate,
           end_date: endDate,
           labor_markup_percent: laborMarkupPercent,
@@ -769,8 +803,11 @@ export function CreateInvoicePage() {
           labor_total: laborTotal,
           expense_total: expenseTotal,
           grand_total: grandTotal,
+          amount_paid: nextAmountPaid,
+          payment_status: nextPaymentStatus,
           status: targetStatus,
           sent_at: targetStatus === 'finalized' ? new Date().toISOString() : null,
+          paid_at: targetStatus === 'finalized' ? nextPaidAt : null,
         })
         .select('id, invoice_number')
         .single();
@@ -791,6 +828,9 @@ export function CreateInvoicePage() {
           labor_total: laborTotal,
           expense_total: expenseTotal,
           grand_total: grandTotal,
+          amount_paid: nextAmountPaid,
+          payment_status: nextPaymentStatus,
+          paid_at: targetStatus === 'finalized' ? nextPaidAt : null,
           updated_at: new Date().toISOString(),
         })
         .eq('id', invoiceId);
@@ -808,31 +848,35 @@ export function CreateInvoicePage() {
       }
     }
 
-    const { error: deleteLinesError } = await supabase
-      .from('invoice_estimate_lines')
-      .delete()
-      .eq('invoice_id', invoiceId);
+    if (selectedEstimateId) {
+      const { error: deleteLinesError } = await supabase
+        .from('invoice_estimate_lines')
+        .delete()
+        .eq('invoice_id', invoiceId);
 
-    if (deleteLinesError) throw deleteLinesError;
+      if (deleteLinesError) throw deleteLinesError;
 
-    const lineRows = progressRowsOverride.map((row) => ({
-      invoice_id: invoiceId,
-      estimate_worksheet_id: selectedEstimateId,
-      source_item_id: row.sourceItemId,
-      source_item_label: row.item,
-      source_value: row.sourceValue,
-      prior_cumulative_percent: row.priorCumulativePercent,
-      current_cumulative_percent: row.currentCumulativePercent,
-      delta_percent: row.deltaPercent,
-      billed_amount: row.billedAmount,
-      warning_over_100: row.isOverBilledWarning,
-    }));
+      if (progressRowsOverride.length > 0) {
+        const lineRows = progressRowsOverride.map((row) => ({
+          invoice_id: invoiceId,
+          estimate_worksheet_id: selectedEstimateId,
+          source_item_id: row.sourceItemId,
+          source_item_label: row.item,
+          source_value: row.sourceValue,
+          prior_cumulative_percent: row.priorCumulativePercent,
+          current_cumulative_percent: row.currentCumulativePercent,
+          delta_percent: row.deltaPercent,
+          billed_amount: row.billedAmount,
+          warning_over_100: row.isOverBilledWarning,
+        }));
 
-    const { error: lineError } = await supabase
-      .from('invoice_estimate_lines')
-      .insert(lineRows);
+        const { error: lineError } = await supabase
+          .from('invoice_estimate_lines')
+          .insert(lineRows);
 
-    if (lineError) throw lineError;
+        if (lineError) throw lineError;
+      }
+    }
 
     if (notifyOnError) {
       console.info('Invoice snapshot saved');
@@ -1622,6 +1666,7 @@ export function CreateInvoicePage() {
                 setEstimateContractTotalProposed(0);
                 setEstimateOverheadPercent(0);
                 setProgressPercentInputs({});
+                setInvoiceAmountPaidInput('');
                 setRateOverrides({});
                 setEnableRateOverrides(false);
                 setExcludeLaborCosts(false);
@@ -1738,7 +1783,7 @@ export function CreateInvoicePage() {
           {/* Invoice Settings */}
           <div className="bg-gradient-to-br from-white to-green-50 border border-green-200 rounded-lg p-4 mb-6">
             <h3 className="text-sm font-semibold text-gray-900 mb-3">Invoice Settings</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">
                   Labor Markup %
@@ -1769,6 +1814,25 @@ export function CreateInvoicePage() {
                   }}
                   className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                   step="0.1"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Amount Already Paid
+                </label>
+                <input
+                  type="number"
+                  value={invoiceAmountPaidInput}
+                  onChange={(e) => setInvoiceAmountPaidInput(e.target.value)}
+                  onBlur={(e) => {
+                    const val = parseFloat(e.target.value);
+                    if (e.target.value.trim() === '') return;
+                    if (isNaN(val) || val < 0) setInvoiceAmountPaidInput('0');
+                  }}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  step="0.01"
+                  min="0"
+                  placeholder="0.00"
                 />
               </div>
               <div className="flex flex-col justify-end gap-2">
