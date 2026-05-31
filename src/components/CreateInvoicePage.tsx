@@ -139,6 +139,7 @@ export function CreateInvoicePage() {
   const [paymentAmountInput, setPaymentAmountInput] = useState('');
   const [isVaultLoading, setIsVaultLoading] = useState(false);
   const [isSavingPayment, setIsSavingPayment] = useState(false);
+  const [isDeletingInvoice, setIsDeletingInvoice] = useState(false);
 
   useEffect(() => {
     fetchLocations();
@@ -725,6 +726,26 @@ export function CreateInvoicePage() {
       if (existingInvoiceError) throw existingInvoiceError;
       invoiceId = existingInvoices?.[0]?.id as string | undefined;
       invoiceNumber = (existingInvoices?.[0] as any)?.invoice_number ?? null;
+    } else {
+      let finalizedQuery = supabase
+        .from('invoices')
+        .select('id, invoice_number')
+        .eq('created_by', user.id)
+        .eq('estimate_worksheet_id', selectedEstimateId)
+        .eq('start_date', startDate)
+        .eq('end_date', endDate)
+        .eq('status', 'finalized')
+        .lte('amount_paid', 0)
+        .order('updated_at', { ascending: false })
+        .limit(1);
+
+      finalizedQuery = invoiceLocation ? finalizedQuery.eq('location', invoiceLocation) : finalizedQuery.is('location', null);
+
+      const { data: existingFinalized, error: existingFinalizedError } = await finalizedQuery;
+      if (existingFinalizedError) throw existingFinalizedError;
+
+      invoiceId = existingFinalized?.[0]?.id as string | undefined;
+      invoiceNumber = (existingFinalized?.[0] as any)?.invoice_number ?? null;
     }
 
     if (!invoiceId) {
@@ -1301,6 +1322,34 @@ export function CreateInvoicePage() {
     }
   };
 
+  const deleteVaultInvoice = async () => {
+    if (!selectedVaultInvoice) return;
+
+    const confirmed = window.confirm(
+      `Delete invoice ${selectedVaultInvoice.invoice_number || selectedVaultInvoice.id}? This cannot be undone.`
+    );
+    if (!confirmed) return;
+
+    setIsDeletingInvoice(true);
+    try {
+      const { error } = await supabase
+        .from('invoices')
+        .delete()
+        .eq('id', selectedVaultInvoice.id);
+
+      if (error) throw error;
+
+      setSelectedVaultInvoiceId('');
+      setPaymentAmountInput('');
+      await fetchInvoiceVault();
+    } catch (error) {
+      console.error('Error deleting invoice:', error);
+      alert('Failed to delete invoice. Please try again.');
+    } finally {
+      setIsDeletingInvoice(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
@@ -1600,10 +1649,20 @@ export function CreateInvoicePage() {
             <button
               type="button"
               onClick={recordInvoicePayment}
-              disabled={!selectedVaultInvoice || isSavingPayment}
+              disabled={!selectedVaultInvoice || isSavingPayment || isDeletingInvoice}
               className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50"
             >
               {isSavingPayment ? 'Saving...' : 'Mark Paid'}
+            </button>
+          </div>
+          <div className="mt-2 flex justify-end">
+            <button
+              type="button"
+              onClick={deleteVaultInvoice}
+              disabled={!selectedVaultInvoice || isSavingPayment || isDeletingInvoice}
+              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+            >
+              {isDeletingInvoice ? 'Deleting...' : 'Delete Invoice'}
             </button>
           </div>
           {selectedVaultInvoice && (

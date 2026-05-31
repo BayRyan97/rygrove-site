@@ -794,6 +794,13 @@ export const generateClientInvoicePDF = (invoiceData: InvoiceData) => {
   doc.setFont('Helvetica', 'bold');
   doc.setTextColor(37, 99, 235); // blue-600
   doc.text('INVOICE', 15, yPosition);
+
+  if (invoiceData.invoiceNumber) {
+    doc.setFontSize(11);
+    doc.setFont('Helvetica', 'bold');
+    doc.setTextColor(17, 24, 39);
+    doc.text(`Invoice #: ${invoiceData.invoiceNumber}`, pageWidth - 15, yPosition, { align: 'right' });
+  }
   yPosition += 10;
 
   // Job details
@@ -813,15 +820,15 @@ export const generateClientInvoicePDF = (invoiceData: InvoiceData) => {
   doc.text(`Invoice Date: ${format(new Date(), 'MMMM d, yyyy')}`, 15, yPosition);
   yPosition += 10;
 
-  if (invoiceData.invoiceNumber) {
-    doc.text(`Invoice #: ${invoiceData.invoiceNumber}`, 15, yPosition);
-    yPosition += 5;
-  }
-
   if ((invoiceData.contractTotalProposed ?? 0) > 0) {
     doc.text(`Total Contract Amount Proposed: ${formatCurrency(invoiceData.contractTotalProposed ?? 0)}`, 15, yPosition);
     yPosition += 6;
   }
+
+  doc.setDrawColor(229, 231, 235);
+  doc.setLineWidth(0.5);
+  doc.line(15, yPosition, pageWidth - 15, yPosition);
+  yPosition += 6;
 
   // Labor summary section
   doc.setFontSize(12);
