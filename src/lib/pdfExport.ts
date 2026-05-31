@@ -761,6 +761,9 @@ interface InvoiceData {
     currentCumulativePercent: number;
     billedAmount: number;
   }[];
+  progressBaseSubtotal?: number;
+  progressOverheadPercent?: number;
+  progressOverheadAmount?: number;
   progressSubtotal?: number;
   laborTotal: number;
   expenseTotal: number;
@@ -906,8 +909,20 @@ export const generateClientInvoicePDF = (invoiceData: InvoiceData) => {
       formatCurrency(row.billedAmount)
     ]);
 
+    const progressBaseSubtotal =
+      invoiceData.progressBaseSubtotal ?? progressRows.reduce((sum, row) => sum + row.billedAmount, 0);
+    const progressOverheadPercent = Math.max(0, invoiceData.progressOverheadPercent ?? 0);
+    const progressOverheadAmount =
+      invoiceData.progressOverheadAmount ?? (progressBaseSubtotal * (progressOverheadPercent / 100));
     const progressTotal =
-      invoiceData.progressSubtotal ?? progressRows.reduce((sum, row) => sum + row.billedAmount, 0);
+      invoiceData.progressSubtotal ?? (progressBaseSubtotal + progressOverheadAmount);
+
+    if (progressOverheadPercent > 0) {
+      progressBody.push([
+        { content: `Overhead & Profit (${progressOverheadPercent.toFixed(2)}%)`, colSpan: 3, styles: { halign: 'right' } },
+        { content: formatCurrency(progressOverheadAmount), styles: { halign: 'right' } }
+      ] as any);
+    }
 
     progressBody.push([
       { content: 'Progress Billing Total', colSpan: 3, styles: { fontStyle: 'bold', halign: 'right' } },

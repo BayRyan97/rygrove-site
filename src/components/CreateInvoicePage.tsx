@@ -79,6 +79,9 @@ interface LocationSummary {
   standaloneExpenses: StandaloneExpense[];
   estimateProgressRows: EstimateProgressRow[];
   laborCosts: { [key: string]: { hours: number; rate: number; cost: number } };
+  progressBaseSubtotal: number;
+  progressOverheadPercent: number;
+  progressOverheadAmount: number;
   progressSubtotal: number;
   laborSubtotal: number;
   laborMarkup: number;
@@ -124,6 +127,7 @@ export function CreateInvoicePage() {
   const [filteredEstimates, setFilteredEstimates] = useState<EstimateWorksheet[]>([]);
   const [highlightedEstimateIndex, setHighlightedEstimateIndex] = useState(-1);
   const [estimateProgressRows, setEstimateProgressRows] = useState<EstimateProgressRow[]>([]);
+  const [estimateOverheadPercent, setEstimateOverheadPercent] = useState(0);
   const [progressPercentInputs, setProgressPercentInputs] = useState<{ [key: string]: string }>({});
   const [showLocationDropdown, setShowLocationDropdown] = useState(false);
   const [showEstimateDropdown, setShowEstimateDropdown] = useState(false);
@@ -390,6 +394,7 @@ export function CreateInvoicePage() {
   const fetchEstimateProgressRows = async (estimateId: string) => {
     if (!estimateId) {
       setEstimateProgressRows([]);
+      setEstimateOverheadPercent(0);
       return;
     }
 
@@ -404,19 +409,9 @@ export function CreateInvoicePage() {
 
       const baseItems = Array.isArray(estimateData.items) ? estimateData.items : [];
       const overheadPercentage = Number(estimateData.overhead_percentage);
-      const overheadAmount = Number(estimateData.overhead_amount);
-      const hasOverhead = Number.isFinite(overheadAmount) && overheadAmount > 0;
+      setEstimateOverheadPercent(Number.isFinite(overheadPercentage) ? Math.max(0, overheadPercentage) : 0);
 
-      const items = hasOverhead
-        ? [
-            ...baseItems,
-            {
-              id: '__overhead__',
-              item: `Overhead & Profit (${Number.isFinite(overheadPercentage) ? overheadPercentage.toFixed(2) : '0.00'}%)`,
-              cost: overheadAmount,
-            },
-          ]
-        : baseItems;
+      const items = baseItems;
 
       // If persistence tables are not deployed yet, this query will fail and fallback to 0% defaults.
       const latestLineByItem: {
@@ -688,7 +683,10 @@ export function CreateInvoicePage() {
     if (!user) throw new Error('You must be signed in to save invoice progress billing.');
 
     const invoiceLocation = selectedLocation || estimateSearchTerm || null;
-    const progressSubtotal = progressRowsOverride.reduce((sum, row) => sum + row.billedAmount, 0);
+    const progressBaseSubtotal = progressRowsOverride.reduce((sum, row) => sum + row.billedAmount, 0);
+    const overheadPercent = Math.max(0, estimateOverheadPercent);
+    const progressOverheadAmount = progressBaseSubtotal * (overheadPercent / 100);
+    const progressSubtotal = progressBaseSubtotal + progressOverheadAmount;
     const laborSubtotal = Object.values(
       timeEntries.reduce<{ [key: string]: number }>((acc, entry) => {
         const hours = calculateHours(entry);
@@ -1020,6 +1018,9 @@ export function CreateInvoicePage() {
       standaloneExpenses: [],
       estimateProgressRows: [],
       laborCosts: {},
+      progressBaseSubtotal: 0,
+      progressOverheadPercent: 0,
+      progressOverheadAmount: 0,
       progressSubtotal: 0,
       laborSubtotal: 0,
       laborMarkup: 0,
@@ -1052,8 +1053,11 @@ export function CreateInvoicePage() {
       laborCosts[entry.user_id].rate = effectiveRate; // Keep the rate for display
     });
 
-    // Progress-billing subtotal is based on delta % * source value.
-    const progressSubtotal = estimateProgressRows.reduce((sum, row) => sum + row.billedAmount, 0);
+    // Progress-billing subtotal = billed base + automatic overhead/profit amount.
+    const progressBaseSubtotal = estimateProgressRows.reduce((sum, row) => sum + row.billedAmount, 0);
+    const progressOverheadPercent = Math.max(0, estimateOverheadPercent);
+    const progressOverheadAmount = progressBaseSubtotal * (progressOverheadPercent / 100);
+    const progressSubtotal = progressBaseSubtotal + progressOverheadAmount;
 
     // Calculate totals with markup
     const laborSubtotal = Object.values(laborCosts).reduce((sum, emp) => sum + emp.cost, 0) + progressSubtotal;
@@ -1069,6 +1073,9 @@ export function CreateInvoicePage() {
     return {
       ...summary,
       laborCosts,
+      progressBaseSubtotal,
+      progressOverheadPercent,
+      progressOverheadAmount,
       progressSubtotal,
       laborSubtotal,
       laborMarkup,
@@ -1081,6 +1088,7 @@ export function CreateInvoicePage() {
     timeEntries,
     standaloneExpenses,
     estimateProgressRows,
+    estimateOverheadPercent,
     rateOverrides,
     laborMarkupPercent,
     expenseMarkupPercent,
@@ -1108,6 +1116,9 @@ export function CreateInvoicePage() {
       standaloneExpenses,
       estimateProgressRows: locationSummary.estimateProgressRows,
       contractTotalProposed: locationSummary.estimateProgressRows.reduce((sum, row) => sum + row.sourceValue, 0),
+      progressBaseSubtotal: locationSummary.progressBaseSubtotal,
+      progressOverheadPercent: locationSummary.progressOverheadPercent,
+      progressOverheadAmount: locationSummary.progressOverheadAmount,
       progressSubtotal: locationSummary.progressSubtotal,
       laborTotal: locationSummary.laborTotal,
       expenseTotal: locationSummary.expenseTotal,
@@ -1154,7 +1165,14 @@ export function CreateInvoicePage() {
     // Labor breakdown
     rows.push(['LABOR BREAKDOWN']);
     rows.push(['Total Hours:', locationSummary.totalHours.toFixed(2)]);
-    if (locationSummary.progressSubtotal > 0) {
+    if (locationSummary.progressBaseSubtotal > 0) {
+      rows.push(['Progress Billing Base Subtotal:', `$${locationSummary.progressBaseSubtotal.toFixed(2)}`]);
+      if (locationSummary.progressOverheadPercent > 0) {
+        rows.push([
+          `Overhead & Profit (${locationSummary.progressOverheadPercent.toFixed(2)}%):`,
+          `$${locationSummary.progressOverheadAmount.toFixed(2)}`
+        ]);
+      }
       rows.push(['Progress Billing Subtotal:', `$${locationSummary.progressSubtotal.toFixed(2)}`]);
     }
     rows.push(['Labor Subtotal:', `$${locationSummary.laborSubtotal.toFixed(2)}`]);
@@ -1784,10 +1802,22 @@ export function CreateInvoicePage() {
                 <span className="font-medium">{locationSummary.totalHours.toFixed(2)}</span>
               </div>
               {locationSummary.progressSubtotal > 0 && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Progress Billing Subtotal:</span>
-                  <span className="font-medium">${formatCurrency(locationSummary.progressSubtotal)}</span>
-                </div>
+                <>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Progress Billing Base Subtotal:</span>
+                    <span className="font-medium">${formatCurrency(locationSummary.progressBaseSubtotal)}</span>
+                  </div>
+                  {locationSummary.progressOverheadPercent > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">Overhead & Profit ({locationSummary.progressOverheadPercent.toFixed(2)}%):</span>
+                      <span className="font-medium">${formatCurrency(locationSummary.progressOverheadAmount)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Progress Billing Subtotal:</span>
+                    <span className="font-medium">${formatCurrency(locationSummary.progressSubtotal)}</span>
+                  </div>
+                </>
               )}
               <div className="flex justify-between text-sm">
                 <span className="text-gray-600">Labor Subtotal:</span>
@@ -1907,6 +1937,11 @@ export function CreateInvoicePage() {
               {locationSummary.estimateProgressRows.some((row) => row.isOverBilledWarning) && (
                 <p className="text-sm text-amber-700">
                   Warning: one or more rows exceed 100% cumulative billing. This is allowed but should be reviewed before sending.
+                </p>
+              )}
+              {locationSummary.progressOverheadPercent > 0 && (
+                <p className="text-sm text-gray-600">
+                  Overhead & Profit ({locationSummary.progressOverheadPercent.toFixed(2)}%) is auto-calculated from this invoice's billed progress amount.
                 </p>
               )}
             </div>
