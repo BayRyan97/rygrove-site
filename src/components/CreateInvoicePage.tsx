@@ -58,6 +58,17 @@ interface EstimateProgressRow {
   isOverBilledWarning: boolean;
 }
 
+interface SavedInvoice {
+  id: string;
+  invoice_number: string | null;
+  location: string | null;
+  grand_total: number;
+  amount_paid: number;
+  payment_status: 'unpaid' | 'partial' | 'paid';
+  status: 'draft' | 'finalized' | 'void';
+  created_at: string;
+}
+
 interface LocationSummary {
   totalHours: number;
   totalExpenses: number;
@@ -121,11 +132,21 @@ export function CreateInvoicePage() {
   const [enableRateOverrides, setEnableRateOverrides] = useState(false);
   const [excludeLaborCosts, setExcludeLaborCosts] = useState(false);
   const [rateOverrides, setRateOverrides] = useState<{[userId: string]: number}>({});
+  const [invoiceVault, setInvoiceVault] = useState<SavedInvoice[]>([]);
+  const [selectedVaultInvoiceId, setSelectedVaultInvoiceId] = useState('');
+  const [paymentAmountInput, setPaymentAmountInput] = useState('');
+  const [isVaultLoading, setIsVaultLoading] = useState(false);
+  const [isSavingPayment, setIsSavingPayment] = useState(false);
 
   useEffect(() => {
     fetchLocations();
     fetchEstimateWorksheets();
+    fetchInvoiceVault();
   }, []);
+
+  useEffect(() => {
+    fetchInvoiceVault();
+  }, [selectedLocation]);
 
   // Filter locations based on search input
   useEffect(() => {
@@ -289,6 +310,39 @@ export function CreateInvoicePage() {
       setEstimateWorksheets(sorted);
     } catch (error) {
       console.error('Error fetching estimate worksheets:', error);
+    }
+  };
+
+  const fetchInvoiceVault = async () => {
+    setIsVaultLoading(true);
+    try {
+      let query = supabase
+        .from('invoices')
+        .select('id, invoice_number, location, grand_total, amount_paid, payment_status, status, created_at')
+        .eq('status', 'finalized')
+        .order('created_at', { ascending: false })
+        .limit(200);
+
+      if (selectedLocation.trim()) {
+        query = query.eq('location', selectedLocation.trim());
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+
+      setInvoiceVault((data || []) as SavedInvoice[]);
+
+      if (selectedVaultInvoiceId) {
+        const stillExists = (data || []).some((invoice: any) => invoice.id === selectedVaultInvoiceId);
+        if (!stillExists) {
+          setSelectedVaultInvoiceId('');
+          setPaymentAmountInput('');
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching invoice vault:', error);
+    } finally {
+      setIsVaultLoading(false);
     }
   };
 
@@ -601,7 +655,8 @@ export function CreateInvoicePage() {
 
   const persistProgressBillingSnapshot = async (
     progressRowsOverride: EstimateProgressRow[] = estimateProgressRows,
-    notifyOnError = false
+    notifyOnError = false,
+    targetStatus: 'draft' | 'finalized' = 'draft'
   ) => {
     if (!selectedEstimateId || progressRowsOverride.length === 0) {
       return;
@@ -636,20 +691,23 @@ export function CreateInvoicePage() {
     const expenseTotal = expenseSubtotal + expenseMarkup;
     const grandTotal = laborTotal + expenseTotal;
 
-    const { data: existingInvoices, error: existingInvoiceError } = await supabase
-      .from('invoices')
-      .select('id')
-      .eq('created_by', user.id)
-      .eq('estimate_worksheet_id', selectedEstimateId)
-      .eq('start_date', startDate)
-      .eq('end_date', endDate)
-      .eq('status', 'draft')
-      .order('updated_at', { ascending: false })
-      .limit(1);
+    let invoiceId: string | undefined;
 
-    if (existingInvoiceError) throw existingInvoiceError;
+    if (targetStatus === 'draft') {
+      const { data: existingInvoices, error: existingInvoiceError } = await supabase
+        .from('invoices')
+        .select('id')
+        .eq('created_by', user.id)
+        .eq('estimate_worksheet_id', selectedEstimateId)
+        .eq('start_date', startDate)
+        .eq('end_date', endDate)
+        .eq('status', 'draft')
+        .order('updated_at', { ascending: false })
+        .limit(1);
 
-    let invoiceId = existingInvoices?.[0]?.id as string | undefined;
+      if (existingInvoiceError) throw existingInvoiceError;
+      invoiceId = existingInvoices?.[0]?.id as string | undefined;
+    }
 
     if (!invoiceId) {
       const { data: invoice, error: invoiceError } = await supabase
@@ -668,7 +726,8 @@ export function CreateInvoicePage() {
           labor_total: laborTotal,
           expense_total: expenseTotal,
           grand_total: grandTotal,
-          status: 'draft',
+          status: targetStatus,
+          sent_at: targetStatus === 'finalized' ? new Date().toISOString() : null,
         })
         .select('id')
         .single();
@@ -976,7 +1035,8 @@ export function CreateInvoicePage() {
 
   const generateClientPDF = async () => {
     try {
-      await persistProgressBillingSnapshot(locationSummary.estimateProgressRows, true);
+      await persistProgressBillingSnapshot(locationSummary.estimateProgressRows, true, 'finalized');
+      await fetchInvoiceVault();
     } catch (error) {
       console.error('Error saving invoice progress snapshot:', error);
       alert('Invoice generated, but the progress percentage could not be saved.');
@@ -999,7 +1059,8 @@ export function CreateInvoicePage() {
 
   const generateExcel = async () => {
     try {
-      await persistProgressBillingSnapshot(locationSummary.estimateProgressRows, true);
+      await persistProgressBillingSnapshot(locationSummary.estimateProgressRows, true, 'finalized');
+      await fetchInvoiceVault();
     } catch (error) {
       console.error('Error saving invoice progress snapshot:', error);
       alert('Report generated, but the progress percentage could not be saved.');
@@ -1156,6 +1217,50 @@ export function CreateInvoicePage() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  };
+
+  const selectedVaultInvoice = invoiceVault.find((invoice) => invoice.id === selectedVaultInvoiceId) || null;
+
+  const recordInvoicePayment = async () => {
+    if (!selectedVaultInvoice) return;
+
+    const parsed = Number.parseFloat(paymentAmountInput);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      alert('Enter a valid payment amount greater than 0.');
+      return;
+    }
+
+    const paymentToApply = Math.max(0, parsed);
+    const newAmountPaid = Math.min(selectedVaultInvoice.grand_total, selectedVaultInvoice.amount_paid + paymentToApply);
+    const nextStatus: 'unpaid' | 'partial' | 'paid' =
+      newAmountPaid <= 0
+        ? 'unpaid'
+        : newAmountPaid >= selectedVaultInvoice.grand_total
+          ? 'paid'
+          : 'partial';
+
+    setIsSavingPayment(true);
+    try {
+      const { error } = await supabase
+        .from('invoices')
+        .update({
+          amount_paid: newAmountPaid,
+          payment_status: nextStatus,
+          paid_at: nextStatus === 'paid' ? new Date().toISOString() : null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', selectedVaultInvoice.id);
+
+      if (error) throw error;
+
+      setPaymentAmountInput('');
+      await fetchInvoiceVault();
+    } catch (error) {
+      console.error('Error recording invoice payment:', error);
+      alert('Failed to record payment. Please try again.');
+    } finally {
+      setIsSavingPayment(false);
+    }
   };
 
   return (
@@ -1417,6 +1522,58 @@ export function CreateInvoicePage() {
               Clear
             </button>
           )}
+        </div>
+
+        <div className="mt-4 border-t pt-4">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Invoice Vault</label>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
+            <select
+              value={selectedVaultInvoiceId}
+              onChange={(e) => {
+                const nextId = e.target.value;
+                setSelectedVaultInvoiceId(nextId);
+                const selected = invoiceVault.find((invoice) => invoice.id === nextId);
+                if (selected) {
+                  const remaining = Math.max(0, selected.grand_total - selected.amount_paid);
+                  setPaymentAmountInput(remaining > 0 ? remaining.toFixed(2) : '');
+                } else {
+                  setPaymentAmountInput('');
+                }
+              }}
+              className="md:col-span-2 w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">Select saved invoice...</option>
+              {invoiceVault.map((invoice) => (
+                <option key={invoice.id} value={invoice.id}>
+                  {(invoice.invoice_number || 'No #')} - {(invoice.location || 'No Location')} - ${invoice.grand_total.toFixed(2)} ({invoice.payment_status})
+                </option>
+              ))}
+            </select>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={paymentAmountInput}
+              onChange={(e) => setPaymentAmountInput(e.target.value)}
+              placeholder="Payment received"
+              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+              disabled={!selectedVaultInvoice}
+            />
+            <button
+              type="button"
+              onClick={recordInvoicePayment}
+              disabled={!selectedVaultInvoice || isSavingPayment}
+              className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50"
+            >
+              {isSavingPayment ? 'Saving...' : 'Mark Paid'}
+            </button>
+          </div>
+          {selectedVaultInvoice && (
+            <p className="mt-2 text-xs text-gray-600">
+              Invoice {selectedVaultInvoice.invoice_number || 'No #'} • Total: ${selectedVaultInvoice.grand_total.toFixed(2)} • Paid: ${selectedVaultInvoice.amount_paid.toFixed(2)} • Remaining: ${Math.max(0, selectedVaultInvoice.grand_total - selectedVaultInvoice.amount_paid).toFixed(2)}
+            </p>
+          )}
+          {isVaultLoading && <p className="mt-2 text-xs text-gray-500">Loading invoice vault...</p>}
         </div>
         
         {locations.length > 0 && !selectedLocation && (
