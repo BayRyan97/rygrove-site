@@ -749,6 +749,7 @@ interface StandaloneExpense {
 
 interface InvoiceData {
   location: string;
+  invoiceNumber?: string | null;
   startDate: string;
   endDate: string;
   entries: InvoiceEntry[];
@@ -811,6 +812,11 @@ export const generateClientInvoicePDF = (invoiceData: InvoiceData) => {
 
   doc.text(`Invoice Date: ${format(new Date(), 'MMMM d, yyyy')}`, 15, yPosition);
   yPosition += 10;
+
+  if (invoiceData.invoiceNumber) {
+    doc.text(`Invoice #: ${invoiceData.invoiceNumber}`, 15, yPosition);
+    yPosition += 5;
+  }
 
   if ((invoiceData.contractTotalProposed ?? 0) > 0) {
     doc.text(`Total Contract Amount Proposed: ${formatCurrency(invoiceData.contractTotalProposed ?? 0)}`, 15, yPosition);
@@ -876,9 +882,7 @@ export const generateClientInvoicePDF = (invoiceData: InvoiceData) => {
 
   yPosition = (doc as any).lastAutoTable.finalY + 10;
 
-  const progressRows = (invoiceData.estimateProgressRows || []).filter(
-    (row) => row.billedAmount > 0
-  );
+  const progressRows = invoiceData.estimateProgressRows || [];
 
   if (progressRows.length > 0) {
     doc.setFontSize(12);

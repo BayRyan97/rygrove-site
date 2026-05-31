@@ -673,9 +673,9 @@ export function CreateInvoicePage() {
     progressRowsOverride: EstimateProgressRow[] = estimateProgressRows,
     notifyOnError = false,
     targetStatus: 'draft' | 'finalized' = 'draft'
-  ) => {
+  ): Promise<{ id: string; invoiceNumber: string | null } | null> => {
     if (!selectedEstimateId || progressRowsOverride.length === 0) {
-      return;
+      return null;
     }
 
     const {
@@ -708,11 +708,12 @@ export function CreateInvoicePage() {
     const grandTotal = laborTotal + expenseTotal;
 
     let invoiceId: string | undefined;
+    let invoiceNumber: string | null = null;
 
     if (targetStatus === 'draft') {
       const { data: existingInvoices, error: existingInvoiceError } = await supabase
         .from('invoices')
-        .select('id')
+        .select('id, invoice_number')
         .eq('created_by', user.id)
         .eq('estimate_worksheet_id', selectedEstimateId)
         .eq('start_date', startDate)
@@ -723,6 +724,7 @@ export function CreateInvoicePage() {
 
       if (existingInvoiceError) throw existingInvoiceError;
       invoiceId = existingInvoices?.[0]?.id as string | undefined;
+      invoiceNumber = (existingInvoices?.[0] as any)?.invoice_number ?? null;
     }
 
     if (!invoiceId) {
@@ -745,11 +747,12 @@ export function CreateInvoicePage() {
           status: targetStatus,
           sent_at: targetStatus === 'finalized' ? new Date().toISOString() : null,
         })
-        .select('id')
+        .select('id, invoice_number')
         .single();
 
       if (invoiceError) throw invoiceError;
       invoiceId = invoice.id;
+      invoiceNumber = (invoice as any).invoice_number ?? null;
     } else {
       const { error: updateError } = await supabase
         .from('invoices')
@@ -768,6 +771,16 @@ export function CreateInvoicePage() {
         .eq('id', invoiceId);
 
       if (updateError) throw updateError;
+
+      if (!invoiceNumber) {
+        const { data: invoiceMeta } = await supabase
+          .from('invoices')
+          .select('invoice_number')
+          .eq('id', invoiceId)
+          .single();
+
+        invoiceNumber = (invoiceMeta as any)?.invoice_number ?? null;
+      }
     }
 
     const { error: deleteLinesError } = await supabase
@@ -799,6 +812,11 @@ export function CreateInvoicePage() {
     if (notifyOnError) {
       console.info('Invoice snapshot saved');
     }
+
+    return {
+      id: invoiceId,
+      invoiceNumber,
+    };
   };
 
   const fetchTimeEntries = async () => {
@@ -1050,8 +1068,10 @@ export function CreateInvoicePage() {
   ]);
 
   const generateClientPDF = async () => {
+    let finalizedInvoiceNumber: string | null = null;
     try {
-      await persistProgressBillingSnapshot(locationSummary.estimateProgressRows, true, 'finalized');
+      const snapshot = await persistProgressBillingSnapshot(locationSummary.estimateProgressRows, true, 'finalized');
+      finalizedInvoiceNumber = snapshot?.invoiceNumber ?? null;
       await fetchInvoiceVault();
     } catch (error) {
       console.error('Error saving invoice progress snapshot:', error);
@@ -1060,6 +1080,7 @@ export function CreateInvoicePage() {
 
     generateClientInvoicePDF({
       location: estimateSearchTerm || selectedLocation,
+      invoiceNumber: finalizedInvoiceNumber,
       startDate,
       endDate,
       entries: timeEntries,
