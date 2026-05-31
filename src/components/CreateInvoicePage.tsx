@@ -357,6 +357,15 @@ export function CreateInvoicePage() {
           warning: boolean;
         };
       } = {};
+      const latestBillableLineByItem: {
+        [itemId: string]: {
+          prior: number;
+          current: number;
+          delta: number;
+          billed: number;
+          warning: boolean;
+        };
+      } = {};
       const { data: priorData, error: priorError } = await supabase
         .from('invoice_estimate_lines')
         .select(
@@ -378,14 +387,21 @@ export function CreateInvoicePage() {
             const delta = Number(row.delta_percent);
             const safeDelta = Number.isFinite(delta) ? delta : Math.max(0, safeCurrent - prior);
             const billed = Number(row.billed_amount);
+            const safeBilled = Number.isFinite(billed) ? billed : 0;
+            const safeWarning = Boolean(row.warning_over_100) || safeCurrent > 100;
 
-            latestLineByItem[itemId] = {
+            const normalized = {
               prior,
               current: safeCurrent,
               delta: safeDelta,
-              billed: Number.isFinite(billed) ? billed : 0,
-              warning: Boolean(row.warning_over_100) || safeCurrent > 100,
+              billed: safeBilled,
+              warning: safeWarning,
             };
+
+            latestLineByItem[itemId] = normalized;
+            if (latestBillableLineByItem[itemId] === undefined && (safeBilled > 0 || safeDelta > 0)) {
+              latestBillableLineByItem[itemId] = normalized;
+            }
           });
       }
 
@@ -393,11 +409,25 @@ export function CreateInvoicePage() {
         const itemId = String(item.id || `item-${index + 1}`);
         const sourceValue = Number(item.cost) || 0;
         const latest = latestLineByItem[itemId];
-        const priorCumulativePercent = latest?.prior ?? 0;
-        const currentCumulativePercent = latest?.current ?? priorCumulativePercent;
-        const deltaPercent = latest?.delta ?? 0;
-        const billedAmount = latest?.billed ?? (deltaPercent / 100) * sourceValue;
-        const isOverBilledWarning = latest?.warning ?? currentCumulativePercent > 100;
+        const latestBillable = latestBillableLineByItem[itemId];
+
+        let resolved = latest;
+        if (
+          latest &&
+          latestBillable &&
+          latest.billed <= 0 &&
+          latest.delta <= 0 &&
+          latest.current === latest.prior
+        ) {
+          // Re-opened invoice with no edits should keep the most recent billed values.
+          resolved = latestBillable;
+        }
+
+        const priorCumulativePercent = resolved?.prior ?? 0;
+        const currentCumulativePercent = resolved?.current ?? priorCumulativePercent;
+        const deltaPercent = resolved?.delta ?? 0;
+        const billedAmount = resolved?.billed ?? (deltaPercent / 100) * sourceValue;
+        const isOverBilledWarning = resolved?.warning ?? currentCumulativePercent > 100;
 
         return {
           id: `${estimateId}-${itemId}`,
