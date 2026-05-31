@@ -127,6 +127,7 @@ export function CreateInvoicePage() {
   const [filteredEstimates, setFilteredEstimates] = useState<EstimateWorksheet[]>([]);
   const [highlightedEstimateIndex, setHighlightedEstimateIndex] = useState(-1);
   const [estimateProgressRows, setEstimateProgressRows] = useState<EstimateProgressRow[]>([]);
+  const [estimateContractTotalProposed, setEstimateContractTotalProposed] = useState(0);
   const [estimateOverheadPercent, setEstimateOverheadPercent] = useState(0);
   const [progressPercentInputs, setProgressPercentInputs] = useState<{ [key: string]: string }>({});
   const [showLocationDropdown, setShowLocationDropdown] = useState(false);
@@ -394,6 +395,7 @@ export function CreateInvoicePage() {
   const fetchEstimateProgressRows = async (estimateId: string) => {
     if (!estimateId) {
       setEstimateProgressRows([]);
+      setEstimateContractTotalProposed(0);
       setEstimateOverheadPercent(0);
       return;
     }
@@ -408,7 +410,9 @@ export function CreateInvoicePage() {
       if (estimateError) throw estimateError;
 
       const baseItems = Array.isArray(estimateData.items) ? estimateData.items : [];
+      const estimateTotal = Number(estimateData.total);
       const overheadPercentage = Number(estimateData.overhead_percentage);
+      setEstimateContractTotalProposed(Number.isFinite(estimateTotal) ? Math.max(0, estimateTotal) : 0);
       setEstimateOverheadPercent(Number.isFinite(overheadPercentage) ? Math.max(0, overheadPercentage) : 0);
 
       const items = baseItems;
@@ -522,6 +526,8 @@ export function CreateInvoicePage() {
     } catch (error) {
       console.error('Error fetching estimate progress rows:', error);
       setEstimateProgressRows([]);
+      setEstimateContractTotalProposed(0);
+      setEstimateOverheadPercent(0);
     }
   };
 
@@ -1115,7 +1121,7 @@ export function CreateInvoicePage() {
       entries: timeEntries,
       standaloneExpenses,
       estimateProgressRows: locationSummary.estimateProgressRows,
-      contractTotalProposed: locationSummary.estimateProgressRows.reduce((sum, row) => sum + row.sourceValue, 0),
+      contractTotalProposed: estimateContractTotalProposed,
       progressBaseSubtotal: locationSummary.progressBaseSubtotal,
       progressOverheadPercent: locationSummary.progressOverheadPercent,
       progressOverheadAmount: locationSummary.progressOverheadAmount,
@@ -1611,6 +1617,8 @@ export function CreateInvoicePage() {
                 setTimeEntries([]);
                 setStandaloneExpenses([]);
                 setEstimateProgressRows([]);
+                setEstimateContractTotalProposed(0);
+                setEstimateOverheadPercent(0);
                 setProgressPercentInputs({});
                 setRateOverrides({});
                 setEnableRateOverrides(false);
