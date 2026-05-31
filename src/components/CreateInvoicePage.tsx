@@ -1148,6 +1148,10 @@ export function CreateInvoicePage() {
 
   const generateClientPDF = async () => {
     const isEstimateOnlyProgressBilling = !selectedLocation.trim() && !!selectedEstimateId;
+    const parsedInvoiceAmountPaid = Number.parseFloat(invoiceAmountPaidInput);
+    const amountAlreadyPaid = Number.isFinite(parsedInvoiceAmountPaid)
+      ? Math.min(locationSummary.grandTotal, Math.max(0, parsedInvoiceAmountPaid))
+      : 0;
     let finalizedInvoiceNumber: string | null = null;
     try {
       const snapshot = await persistProgressBillingSnapshot(locationSummary.estimateProgressRows, true, 'finalized');
@@ -1162,6 +1166,7 @@ export function CreateInvoicePage() {
       location: estimateSearchTerm || selectedLocation,
       invoiceNumber: finalizedInvoiceNumber,
       showLaborSummary: !isEstimateOnlyProgressBilling,
+      amountAlreadyPaid,
       startDate,
       endDate,
       entries: timeEntries,

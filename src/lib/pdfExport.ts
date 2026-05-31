@@ -751,6 +751,7 @@ interface InvoiceData {
   location: string;
   invoiceNumber?: string | null;
   showLaborSummary?: boolean;
+  amountAlreadyPaid?: number;
   startDate: string;
   endDate: string;
   entries: InvoiceEntry[];
@@ -781,6 +782,8 @@ export const generateClientInvoicePDF = (invoiceData: InvoiceData) => {
 
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
+  const amountAlreadyPaid = Math.max(0, invoiceData.amountAlreadyPaid ?? 0);
+  const balanceDue = Math.max(0, invoiceData.grandTotal - amountAlreadyPaid);
 
   // Add header with Rygrove branding
   let yPosition = addHeader(doc);
@@ -1056,7 +1059,20 @@ export const generateClientInvoicePDF = (invoiceData: InvoiceData) => {
     yPosition = (doc as any).lastAutoTable.finalY + 10;
   }
 
-  // Grand Total
+  if (amountAlreadyPaid > 0) {
+    doc.setFontSize(10);
+    doc.setFont('Helvetica', 'normal');
+    doc.setTextColor(55, 65, 81);
+    doc.text('Invoice Total', 15, yPosition);
+    doc.text(formatCurrency(invoiceData.grandTotal), pageWidth - 15, yPosition, { align: 'right' });
+    yPosition += 6;
+
+    doc.text('Amount Already Paid', 15, yPosition);
+    doc.text(`- ${formatCurrency(amountAlreadyPaid)}`, pageWidth - 15, yPosition, { align: 'right' });
+    yPosition += 8;
+  }
+
+  // Total Due
   doc.setFillColor(37, 99, 235); // blue-600
   doc.rect(15, yPosition, pageWidth - 30, 15, 'F');
 
@@ -1064,7 +1080,7 @@ export const generateClientInvoicePDF = (invoiceData: InvoiceData) => {
   doc.setFont('Helvetica', 'bold');
   doc.setTextColor(255, 255, 255); // white
   doc.text('TOTAL DUE', 20, yPosition + 10);
-  doc.text(formatCurrency(invoiceData.grandTotal), pageWidth - 20, yPosition + 10, { align: 'right' });
+  doc.text(formatCurrency(balanceDue), pageWidth - 20, yPosition + 10, { align: 'right' });
 
   yPosition += 20;
 
