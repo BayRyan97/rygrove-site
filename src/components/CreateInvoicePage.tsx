@@ -571,6 +571,34 @@ export function CreateInvoicePage() {
     }
   };
 
+  const resetAllPriorCumulative = async () => {
+    if (estimateProgressRows.length === 0) return;
+
+    const confirmed = window.confirm(
+      'Reset all Prior Cumulative % values to 0? This starts the estimate billing from a clean baseline.'
+    );
+    if (!confirmed) return;
+
+    const nextRows = estimateProgressRows.map((row) => ({
+      ...row,
+      priorCumulativePercent: 0,
+      currentCumulativePercent: 0,
+      deltaPercent: 0,
+      billedAmount: 0,
+      isOverBilledWarning: false,
+    }));
+
+    setEstimateProgressRows(nextRows);
+    setProgressPercentInputs({});
+
+    try {
+      await persistProgressBillingSnapshot(nextRows);
+    } catch (error) {
+      console.error('Error resetting all prior cumulative values:', error);
+      alert('Failed to save reset baseline. Please try again.');
+    }
+  };
+
   const persistProgressBillingSnapshot = async (
     progressRowsOverride: EstimateProgressRow[] = estimateProgressRows,
     notifyOnError = false
@@ -1560,7 +1588,16 @@ export function CreateInvoicePage() {
 
           {locationSummary.estimateProgressRows.length > 0 && (
             <div className="space-y-4 mb-6">
-              <h3 className="text-lg font-medium text-gray-900">Progress Billing (Estimate Rows)</h3>
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="text-lg font-medium text-gray-900">Progress Billing (Estimate Rows)</h3>
+                <button
+                  type="button"
+                  onClick={resetAllPriorCumulative}
+                  className="px-3 py-1.5 text-xs font-medium text-red-700 border border-red-200 rounded hover:bg-red-50"
+                >
+                  Reset All Prior Cumulative %
+                </button>
+              </div>
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200 border rounded-lg">
                   <thead className="bg-gray-50">
