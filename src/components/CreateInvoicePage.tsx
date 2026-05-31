@@ -1043,12 +1043,13 @@ export function CreateInvoicePage() {
     }
 
     generateClientInvoicePDF({
-      location: selectedLocation,
+      location: estimateSearchTerm || selectedLocation,
       startDate,
       endDate,
       entries: timeEntries,
       standaloneExpenses,
       estimateProgressRows: locationSummary.estimateProgressRows,
+      contractTotalProposed: locationSummary.estimateProgressRows.reduce((sum, row) => sum + row.sourceValue, 0),
       progressSubtotal: locationSummary.progressSubtotal,
       laborTotal: locationSummary.laborTotal,
       expenseTotal: locationSummary.expenseTotal,

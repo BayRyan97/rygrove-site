@@ -753,6 +753,7 @@ interface InvoiceData {
   endDate: string;
   entries: InvoiceEntry[];
   standaloneExpenses: StandaloneExpense[];
+  contractTotalProposed?: number;
   estimateProgressRows?: {
     item: string;
     sourceValue: number;
@@ -810,6 +811,11 @@ export const generateClientInvoicePDF = (invoiceData: InvoiceData) => {
 
   doc.text(`Invoice Date: ${format(new Date(), 'MMMM d, yyyy')}`, 15, yPosition);
   yPosition += 10;
+
+  if ((invoiceData.contractTotalProposed ?? 0) > 0) {
+    doc.text(`Total Contract Amount Proposed: ${formatCurrency(invoiceData.contractTotalProposed ?? 0)}`, 15, yPosition);
+    yPosition += 6;
+  }
 
   // Labor summary section
   doc.setFontSize(12);
