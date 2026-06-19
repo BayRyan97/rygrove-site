@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Calendar, DollarSign, LogOut, Eye, Shield, Menu, X, ChevronDown, FileSpreadsheet, Calculator, FolderKanban, Home } from 'lucide-react';
+import { Calendar, DollarSign, LogOut, Eye, Shield, Menu, X, ChevronDown, FileSpreadsheet, Calculator, FolderKanban, Home, MessageSquare } from 'lucide-react';
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
@@ -10,6 +10,7 @@ import { CreateInvoicePage } from './CreateInvoicePage';
 import { ExpensePage } from './ExpensePage';
 import { EstimateWorksheetPage } from './EstimateWorksheetPage';
 import PlannerPage from './PlannerPage';
+import { AskAiPage } from './AskAiPage';
 import { ProfilePictureUploader } from './ProfilePictureUploader';
 import { ProfileAvatar } from './ProfileAvatar';
 import { ProtectedRoute } from './ProtectedRoute';
@@ -93,6 +94,13 @@ export function Dashboard({ user }: DashboardProps) {
       id: 'planner',
       label: 'Project Planner',
       icon: FolderKanban,
+      show: true,
+      group: 'tools'
+    },
+    {
+      id: 'ask-ai',
+      label: 'Ask AI',
+      icon: MessageSquare,
       show: true,
       group: 'tools'
     },
@@ -369,6 +377,7 @@ export function Dashboard({ user }: DashboardProps) {
               <Route path="/view-activity" element={<ViewActivityPage />} />
               <Route path="/enter-activity" element={<TimeEntriesPage />} />
               <Route path="/planner" element={<PlannerPage />} />
+              <Route path="/ask-ai" element={<AskAiPage />} />
               <Route path="/estimate-worksheet" element={<EstimateWorksheetPage />} />
               <Route path="/create-invoice" element={<CreateInvoicePage />} />
               <Route path="/expenses" element={<ExpensePage />} />
