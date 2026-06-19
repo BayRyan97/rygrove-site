@@ -146,6 +146,9 @@ function getDateRangeFromQuestion(question: string): { startDate: string; endDat
     startDate = new Date(endDate);
     startDate.setUTCDate(startDate.getUTCDate() - 30);
     label = 'last 30 days';
+  } else if (/last\s+3\s+month(s)?/.test(q)) {
+    startDate = new Date(Date.UTC(endDate.getUTCFullYear(), endDate.getUTCMonth() - 2, 1));
+    label = 'last 3 months';
   } else if (q.includes('this week') || q.includes('week')) {
     const day = endDate.getUTCDay();
     const diffToMonday = day === 0 ? 6 : day - 1;
@@ -330,7 +333,8 @@ function hasExplicitDateRange(question: string): boolean {
     q.includes('this quarter') ||
     q.includes('this year') ||
     q.includes('last 7 days') ||
-    q.includes('last 30 days')
+    q.includes('last 30 days') ||
+    /last\s+3\s+month(s)?/.test(q)
   );
 }
 
