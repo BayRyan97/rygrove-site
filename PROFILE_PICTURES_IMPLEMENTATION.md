@@ -145,11 +145,13 @@ Each file is stored as: `avatars/{userId}/{timestamp}-{originalFileName}`
 
 ### CSS Transform for Picture Display
 The picture_metadata zoom and offset values are applied via inline styles:
+{% raw %}
 ```typescript
 style={{
   transform: `scale(${zoom}) translate(${offsetX}%, ${offsetY}%)`
 }}
 ```
+{% endraw %}
 
 This allows:
 - **zoom**: Magnifies image (0.5 = 50%, 1 = 100%, 2 = 200%)
