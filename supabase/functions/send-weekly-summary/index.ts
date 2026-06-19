@@ -1,5 +1,17 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+function jsonResponse(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+}
+
 interface ProfileRow {
   id: string;
   full_name: string | null;
@@ -26,9 +38,7 @@ interface ExpenseRow {
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', {
-      headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type' },
-    });
+    return new Response('ok', { headers: corsHeaders });
   }
 
   try {
@@ -46,10 +56,7 @@ Deno.serve(async (req) => {
       });
       const { data: { user }, error: userErr } = await userClient.auth.getUser();
       if (userErr || !user) {
-        return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-          status: 401,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        return jsonResponse({ error: 'Unauthorized' }, 401);
       }
       const { data: profile } = await userClient
         .from('profiles')
@@ -57,10 +64,7 @@ Deno.serve(async (req) => {
         .eq('id', user.id)
         .single();
       if (profile?.role !== 'admin') {
-        return new Response(JSON.stringify({ error: 'Forbidden: admin only' }), {
-          status: 403,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        return jsonResponse({ error: 'Forbidden: admin only' }, 403);
       }
     }
     const resendApiKey = Deno.env.get('RESEND_API_KEY')!;
@@ -135,25 +139,17 @@ Deno.serve(async (req) => {
     // Send to every admin with an email
     const adminEmails = adminProfiles.map(p => p.email).filter((e): e is string => !!e);
     if (adminEmails.length === 0) {
-      return new Response(JSON.stringify({ error: 'No admin emails found in profiles' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonResponse({ error: 'No admin emails found in profiles' }, 400);
     }
 
     for (const to of adminEmails) {
       await sendViaResend(resendApiKey, fromEmail, to, `Rygrove Weekly Summary – ${weekLabel}`, html);
     }
 
-    return new Response(JSON.stringify({ success: true, sent: adminEmails.length, weekLabel }), {
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return jsonResponse({ success: true, sent: adminEmails.length, weekLabel });
   } catch (err) {
     console.error('[send-weekly-summary]', err);
-    return new Response(JSON.stringify({ error: String(err) }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return jsonResponse({ error: String(err) }, 500);
   }
 });
 
