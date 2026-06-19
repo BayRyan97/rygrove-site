@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Bot, ChevronLeft, ChevronRight, Loader2, MessageSquare, SendHorizonal, User } from 'lucide-react';
+import { Bot, ChevronLeft, ChevronRight, Loader2, MessageSquare, SendHorizonal, Trash2, User } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../lib/supabase';
 import {
@@ -52,6 +52,8 @@ export function AskAiPage() {
   const [isLoadingSessions, setIsLoadingSessions] = useState(false);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isClearingHistory, setIsClearingHistory] = useState(false);
+  const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
   const [isHistoryOpen, setIsHistoryOpen] = useState(true);
   const [isNearBottom, setIsNearBottom] = useState(true);
   const messageListRef = useRef<HTMLDivElement | null>(null);
@@ -289,6 +291,77 @@ export function AskAiPage() {
     }
   };
 
+  const handleDeleteSession = async (sessionId: string) => {
+    const targetSession = sessions.find((session) => session.id === sessionId);
+    const sessionLabel = targetSession?.title || 'Untitled conversation';
+
+    const shouldDelete = window.confirm(`Delete "${sessionLabel}"? This cannot be undone.`);
+    if (!shouldDelete) return;
+
+    setDeletingSessionId(sessionId);
+
+    try {
+      const { error } = await supabase
+        .from('ai_chat_sessions')
+        .delete()
+        .eq('id', sessionId);
+
+      if (error) throw error;
+
+      const remainingSessions = sessions.filter((session) => session.id !== sessionId);
+      setSessions(remainingSessions);
+
+      if (selectedSessionId === sessionId) {
+        const nextSessionId = remainingSessions[0]?.id ?? null;
+        setSelectedSessionId(nextSessionId);
+
+        if (!nextSessionId) {
+          setMessages([]);
+        }
+      }
+
+      toast.success('Conversation deleted.');
+    } catch (error) {
+      console.error('Failed to delete AI session:', error);
+      toast.error('Failed to delete conversation.');
+    } finally {
+      setDeletingSessionId(null);
+    }
+  };
+
+  const handleClearAllHistory = async () => {
+    if (sessions.length === 0) {
+      toast.error('No conversations to delete.');
+      return;
+    }
+
+    const shouldDeleteAll = window.confirm('Delete all conversation history? This cannot be undone.');
+    if (!shouldDeleteAll) return;
+
+    setIsClearingHistory(true);
+
+    try {
+      const sessionIds = sessions.map((session) => session.id);
+
+      const { error } = await supabase
+        .from('ai_chat_sessions')
+        .delete()
+        .in('id', sessionIds);
+
+      if (error) throw error;
+
+      setSessions([]);
+      setSelectedSessionId(null);
+      setMessages([]);
+      toast.success('Chat history cleared.');
+    } catch (error) {
+      console.error('Failed to clear AI history:', error);
+      toast.error('Failed to clear history.');
+    } finally {
+      setIsClearingHistory(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="rounded-xl border border-blue-100 bg-gradient-to-r from-blue-50 to-cyan-50 p-4">
@@ -307,7 +380,18 @@ export function AskAiPage() {
             isHistoryOpen ? 'block' : 'hidden'
           }`}
         >
-          <div className="text-sm font-semibold text-gray-700 mb-3">Conversations</div>
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <div className="text-sm font-semibold text-gray-700">Conversations</div>
+            <button
+              type="button"
+              onClick={handleClearAllHistory}
+              disabled={isClearingHistory || sessions.length === 0}
+              className="inline-flex items-center gap-1 rounded-md border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isClearingHistory ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+              Clear all
+            </button>
+          </div>
 
           {isLoadingSessions ? (
             <div className="text-sm text-gray-500 flex items-center gap-2">
@@ -319,22 +403,43 @@ export function AskAiPage() {
           ) : (
             <div className="space-y-2">
               {sessions.map((session) => (
-                <button
+                <div
                   key={session.id}
-                  onClick={() => setSelectedSessionId(session.id)}
-                  className={`w-full text-left rounded-lg border px-3 py-2 transition-colors ${
+                  className={`w-full rounded-lg border px-3 py-2 transition-colors ${
                     selectedSessionId === session.id
                       ? 'border-blue-500 bg-blue-50'
                       : 'border-gray-200 hover:bg-gray-50'
                   }`}
                 >
-                  <div className="text-sm font-medium text-gray-800 truncate">
-                    {session.title || 'Untitled conversation'}
+                  <div className="flex items-start justify-between gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedSessionId(session.id)}
+                      className="min-w-0 flex-1 text-left"
+                    >
+                      <div className="text-sm font-medium text-gray-800 truncate">
+                        {session.title || 'Untitled conversation'}
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        {new Date(session.updated_at).toLocaleString()}
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleDeleteSession(session.id)}
+                      disabled={deletingSessionId === session.id}
+                      className="rounded-md border border-gray-200 p-1.5 text-gray-500 hover:bg-red-50 hover:text-red-600 hover:border-red-200 disabled:cursor-not-allowed disabled:opacity-50"
+                      aria-label="Delete conversation"
+                      title="Delete conversation"
+                    >
+                      {deletingSessionId === session.id ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-3.5 w-3.5" />
+                      )}
+                    </button>
                   </div>
-                  <div className="text-xs text-gray-500 mt-1">
-                    {new Date(session.updated_at).toLocaleString()}
-                  </div>
-                </button>
+                </div>
               ))}
             </div>
           )}
