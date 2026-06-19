@@ -219,6 +219,24 @@ export function AskAiPage() {
       };
     }
 
+    if (intent === 'invoices_count' || intent === 'invoices_total' || intent === 'invoices_outstanding') {
+      return {
+        title: 'Invoice Summary',
+        columns: ['Person', 'Range', 'Invoice Count', 'Total Invoiced', 'Total Paid', 'Outstanding', 'Paid', 'Partial', 'Unpaid'],
+        rows: [[
+          String(metadata.subject || '-'),
+          `${String(metadata.startDate || '-') } to ${String(metadata.endDate || '-')}`,
+          String(metadata.invoiceCount || '0'),
+          toCurrency(metadata.totalInvoiced),
+          toCurrency(metadata.totalPaid),
+          toCurrency(metadata.outstandingTotal),
+          String(metadata.paidCount || '0'),
+          String(metadata.partialCount || '0'),
+          String(metadata.unpaidCount || '0'),
+        ]],
+      };
+    }
+
     return null;
   };
 

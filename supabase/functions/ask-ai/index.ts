@@ -54,13 +54,28 @@ interface ExpenseRow {
   } | null;
 }
 
+interface InvoiceRow {
+  id: string;
+  invoice_number: string | null;
+  created_by: string;
+  location: string | null;
+  grand_total: number;
+  amount_paid: number;
+  payment_status: 'unpaid' | 'partial' | 'paid';
+  status: 'draft' | 'finalized' | 'void';
+  created_at: string;
+}
+
 type AskIntent =
   | 'hours_summary'
   | 'locations_summary'
   | 'locations_chart'
   | 'expenses_count'
   | 'expenses_total'
-  | 'expenses_by_job';
+  | 'expenses_by_job'
+  | 'invoices_count'
+  | 'invoices_total'
+  | 'invoices_outstanding';
 type AskToolName =
   | 'fetch_time_entries'
   | 'compute_hours_summary'
@@ -70,6 +85,10 @@ type AskToolName =
   | 'compute_expenses_count'
   | 'compute_expenses_total'
   | 'compute_expenses_by_job'
+  | 'fetch_invoices'
+  | 'compute_invoices_count'
+  | 'compute_invoices_total'
+  | 'compute_invoices_outstanding'
   | 'compose_concise_summary';
 
 interface AskToolCallRecord {
@@ -235,10 +254,35 @@ function resolvePersonFromQuestion(question: string, profiles: ProfileRow[]): Na
 
 function detectIntent(question: string): AskIntent {
   const q = question.toLowerCase();
+  const asksInvoice =
+    q.includes('invoice') ||
+    q.includes('invoices') ||
+    q.includes('billed') ||
+    q.includes('billing');
   const asksExpense = q.includes('expense') || q.includes('expenses');
   const asksCount = q.includes('how many') || q.includes('count') || q.includes('number of');
   const asksAmount = q.includes('how much') || q.includes('total') || q.includes('sum');
   const asksJobOrLocation = q.includes('job') || q.includes('location') || q.includes('site') || q.includes('for a job') || q.includes('for job');
+
+  if (asksInvoice) {
+    const asksOutstanding =
+      q.includes('outstanding') ||
+      q.includes('unpaid') ||
+      q.includes('open') ||
+      q.includes('remaining') ||
+      q.includes('balance due') ||
+      q.includes('still owed');
+
+    if (asksOutstanding) {
+      return 'invoices_outstanding';
+    }
+
+    if (asksCount) {
+      return 'invoices_count';
+    }
+
+    return 'invoices_total';
+  }
 
   if (asksExpense && asksAmount && asksJobOrLocation) {
     return 'expenses_by_job';
@@ -295,6 +339,10 @@ function hasIntentSignals(question: string): boolean {
   return (
     q.includes('hour') ||
     q.includes('time') ||
+    q.includes('invoice') ||
+    q.includes('invoices') ||
+    q.includes('billing') ||
+    q.includes('billed') ||
     q.includes('expense') ||
     q.includes('cost') ||
     q.includes('location') ||
@@ -343,7 +391,10 @@ function extractPriorConversationContext(recentAssistantMessages: Array<{ metada
       intent === 'locations_chart' ||
       intent === 'expenses_count' ||
       intent === 'expenses_total' ||
-      intent === 'expenses_by_job'
+      intent === 'expenses_by_job' ||
+      intent === 'invoices_count' ||
+      intent === 'invoices_total' ||
+      intent === 'invoices_outstanding'
     )
       ? (intent as AskIntent)
       : undefined;
@@ -604,6 +655,99 @@ function buildToolRegistry() {
         count,
       };
     },
+    fetch_invoices: async (_args, ctx) => {
+      let query = ctx.serviceClient
+        .from('invoices')
+        .select('id, invoice_number, created_by, location, grand_total, amount_paid, payment_status, status, created_at')
+        .eq('status', 'finalized')
+        .gte('created_at', `${ctx.startDate}T00:00:00.000Z`)
+        .lte('created_at', `${ctx.endDate}T23:59:59.999Z`);
+
+      if (ctx.targetUserId) {
+        query = query.eq('created_by', ctx.targetUserId);
+      } else if (!ctx.isPrivileged) {
+        query = query.eq('created_by', ctx.fallbackUserId);
+      }
+
+      const { data, error } = await query;
+      if (error) {
+        throw new Error('Failed to query invoices');
+      }
+
+      return { invoices: (data || []) as InvoiceRow[] };
+    },
+    compute_invoices_count: async (args) => {
+      const invoices = (args.invoices || []) as InvoiceRow[];
+      const subjectLabel = String(args.subjectLabel || 'you');
+      const rangeLabel = String(args.rangeLabel || 'selected range');
+      const startDate = String(args.startDate || '');
+      const endDate = String(args.endDate || '');
+
+      const paidCount = invoices.filter((invoice) => invoice.payment_status === 'paid').length;
+      const partialCount = invoices.filter((invoice) => invoice.payment_status === 'partial').length;
+      const unpaidCount = invoices.filter((invoice) => invoice.payment_status === 'unpaid').length;
+      const answer = `${subjectLabel} has ${invoices.length} finalized invoice${invoices.length === 1 ? '' : 's'} in ${rangeLabel} (${startDate} to ${endDate}). Paid: ${paidCount}, Partial: ${partialCount}, Unpaid: ${unpaidCount}.`;
+
+      return {
+        answer,
+        invoiceCount: invoices.length,
+        paidCount,
+        partialCount,
+        unpaidCount,
+      };
+    },
+    compute_invoices_total: async (args) => {
+      const invoices = (args.invoices || []) as InvoiceRow[];
+      const subjectLabel = String(args.subjectLabel || 'you');
+      const rangeLabel = String(args.rangeLabel || 'selected range');
+      const startDate = String(args.startDate || '');
+      const endDate = String(args.endDate || '');
+
+      const totalInvoiced = Number(invoices.reduce((sum, invoice) => sum + Number(invoice.grand_total || 0), 0).toFixed(2));
+      const totalPaid = Number(invoices.reduce((sum, invoice) => sum + Number(invoice.amount_paid || 0), 0).toFixed(2));
+      const outstandingTotal = Number(Math.max(0, totalInvoiced - totalPaid).toFixed(2));
+
+      const answer = `Total finalized invoicing for ${subjectLabel} in ${rangeLabel} (${startDate} to ${endDate}) is $${totalInvoiced.toFixed(2)} across ${invoices.length} invoice${invoices.length === 1 ? '' : 's'}. Paid: $${totalPaid.toFixed(2)}. Outstanding: $${outstandingTotal.toFixed(2)}.`;
+
+      return {
+        answer,
+        invoiceCount: invoices.length,
+        totalInvoiced,
+        totalPaid,
+        outstandingTotal,
+      };
+    },
+    compute_invoices_outstanding: async (args) => {
+      const invoices = (args.invoices || []) as InvoiceRow[];
+      const subjectLabel = String(args.subjectLabel || 'you');
+      const rangeLabel = String(args.rangeLabel || 'selected range');
+      const startDate = String(args.startDate || '');
+      const endDate = String(args.endDate || '');
+
+      const openInvoices = invoices.filter((invoice) => invoice.payment_status !== 'paid');
+      const outstandingTotal = Number(
+        openInvoices
+          .reduce((sum, invoice) => sum + Math.max(0, Number(invoice.grand_total || 0) - Number(invoice.amount_paid || 0)), 0)
+          .toFixed(2)
+      );
+      const paidCount = invoices.filter((invoice) => invoice.payment_status === 'paid').length;
+      const partialCount = invoices.filter((invoice) => invoice.payment_status === 'partial').length;
+      const unpaidCount = invoices.filter((invoice) => invoice.payment_status === 'unpaid').length;
+
+      const answer = `${subjectLabel} has $${outstandingTotal.toFixed(2)} outstanding in ${openInvoices.length} open invoice${openInvoices.length === 1 ? '' : 's'} for ${rangeLabel} (${startDate} to ${endDate}). Paid: ${paidCount}, Partial: ${partialCount}, Unpaid: ${unpaidCount}.`;
+
+      return {
+        answer,
+        invoiceCount: invoices.length,
+        openInvoiceCount: openInvoices.length,
+        totalInvoiced: Number(invoices.reduce((sum, invoice) => sum + Number(invoice.grand_total || 0), 0).toFixed(2)),
+        totalPaid: Number(invoices.reduce((sum, invoice) => sum + Number(invoice.amount_paid || 0), 0).toFixed(2)),
+        outstandingTotal,
+        paidCount,
+        partialCount,
+        unpaidCount,
+      };
+    },
     compose_concise_summary: async (args) => {
       const intent = String(args.intent || '');
       const subject = String(args.subject || 'you');
@@ -661,6 +805,27 @@ function buildToolRegistry() {
         const totalHours = Number(args.totalHours || 0);
         return {
           summary: `${subject} logged ${totalHours} hour${totalHours === 1 ? '' : 's'} in ${rangeLabel}.`,
+        };
+      }
+
+      if (intent === 'invoices_count') {
+        const invoiceCount = Number(args.invoiceCount || 0);
+        return {
+          summary: `${subject} has ${invoiceCount} finalized invoice${invoiceCount === 1 ? '' : 's'} in ${rangeLabel}.`,
+        };
+      }
+
+      if (intent === 'invoices_total') {
+        const totalInvoiced = Number(args.totalInvoiced || 0).toFixed(2);
+        return {
+          summary: `${subject} has $${totalInvoiced} in finalized invoices for ${rangeLabel}.`,
+        };
+      }
+
+      if (intent === 'invoices_outstanding') {
+        const outstandingTotal = Number(args.outstandingTotal || 0).toFixed(2);
+        return {
+          summary: `${subject} has $${outstandingTotal} outstanding in ${rangeLabel}.`,
         };
       }
 
@@ -1010,6 +1175,16 @@ Deno.serve(async (req) => {
       };
     }
 
+    let typedInvoices: InvoiceRow[] = [];
+    if (intent === 'invoices_count' || intent === 'invoices_total' || intent === 'invoices_outstanding') {
+      const invoicesResult = await runTool('fetch_invoices', {});
+      typedInvoices = (invoicesResult.invoices || []) as InvoiceRow[];
+      metadata = {
+        ...metadata,
+        source: 'invoices',
+      };
+    }
+
     if (intent === 'hours_summary') {
       const result = await runTool('compute_hours_summary', {
         entries: typedEntries,
@@ -1183,6 +1358,97 @@ Deno.serve(async (req) => {
         });
         answer = String(concise.summary || answer);
       }
+    }
+
+    if (intent === 'invoices_count') {
+      const result = await runTool('compute_invoices_count', {
+        invoices: typedInvoices,
+        subjectLabel,
+        rangeLabel: label,
+        startDate,
+        endDate,
+      });
+
+      answer = String(result.answer || 'No answer available.');
+      metadata = {
+        ...metadata,
+        invoiceCount: Number(result.invoiceCount || 0),
+        paidCount: Number(result.paidCount || 0),
+        partialCount: Number(result.partialCount || 0),
+        unpaidCount: Number(result.unpaidCount || 0),
+      };
+
+      const concise = await runTool('compose_concise_summary', {
+        intent,
+        subject: subjectLabel,
+        rangeLabel: label,
+        startDate,
+        endDate,
+        invoiceCount: metadata.invoiceCount,
+      });
+      answer = String(concise.summary || answer);
+    }
+
+    if (intent === 'invoices_total') {
+      const result = await runTool('compute_invoices_total', {
+        invoices: typedInvoices,
+        subjectLabel,
+        rangeLabel: label,
+        startDate,
+        endDate,
+      });
+
+      answer = String(result.answer || 'No answer available.');
+      metadata = {
+        ...metadata,
+        invoiceCount: Number(result.invoiceCount || 0),
+        totalInvoiced: Number(result.totalInvoiced || 0),
+        totalPaid: Number(result.totalPaid || 0),
+        outstandingTotal: Number(result.outstandingTotal || 0),
+      };
+
+      const concise = await runTool('compose_concise_summary', {
+        intent,
+        subject: subjectLabel,
+        rangeLabel: label,
+        startDate,
+        endDate,
+        totalInvoiced: metadata.totalInvoiced,
+      });
+      answer = String(concise.summary || answer);
+    }
+
+    if (intent === 'invoices_outstanding') {
+      const result = await runTool('compute_invoices_outstanding', {
+        invoices: typedInvoices,
+        subjectLabel,
+        rangeLabel: label,
+        startDate,
+        endDate,
+      });
+
+      answer = String(result.answer || 'No answer available.');
+      metadata = {
+        ...metadata,
+        invoiceCount: Number(result.invoiceCount || 0),
+        openInvoiceCount: Number(result.openInvoiceCount || 0),
+        totalInvoiced: Number(result.totalInvoiced || 0),
+        totalPaid: Number(result.totalPaid || 0),
+        outstandingTotal: Number(result.outstandingTotal || 0),
+        paidCount: Number(result.paidCount || 0),
+        partialCount: Number(result.partialCount || 0),
+        unpaidCount: Number(result.unpaidCount || 0),
+      };
+
+      const concise = await runTool('compose_concise_summary', {
+        intent,
+        subject: subjectLabel,
+        rangeLabel: label,
+        startDate,
+        endDate,
+        outstandingTotal: metadata.outstandingTotal,
+      });
+      answer = String(concise.summary || answer);
     }
 
     const assistantInsert = await serviceClient
