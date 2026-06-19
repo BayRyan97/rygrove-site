@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Shield, Save, Search, ChevronDown, Calendar, Clock, MapPin, DollarSign, User, Filter, Edit2, X, Check, Download, Plus, UserPlus, Key, Trash2, Camera, Palette } from 'lucide-react';
+import { Shield, Save, Search, ChevronDown, Calendar, Clock, MapPin, DollarSign, User, Filter, Edit2, X, Check, Download, Plus, UserPlus, Key, Trash2, Camera, Palette, Mail } from 'lucide-react';
 import { supabase, getUserRole } from '../lib/supabase';
 import { ProfilePictureUploader } from './ProfilePictureUploader';
 import { ProfileAvatar } from './ProfileAvatar';
@@ -96,6 +96,33 @@ function AdminPage() {
   const [pictureTimestamps, setPictureTimestamps] = useState<{ [key: string]: number }>({});
   const [editingProfilePicture, setEditingProfilePicture] = useState<UserProfile | null>(null);
   const [isAssigningColors, setIsAssigningColors] = useState(false);
+  const [isSendingSummary, setIsSendingSummary] = useState(false);
+
+  const sendWeeklySummary = async () => {
+    setIsSendingSummary(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Not authenticated');
+
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const res = await fetch(`${supabaseUrl}/functions/v1/send-weekly-summary`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? 'Failed to send');
+      toast.success(`Weekly summary sent to ${json.sent} admin${json.sent !== 1 ? 's' : ''} (${json.weekLabel})`);
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message ?? 'Failed to send weekly summary');
+    } finally {
+      setIsSendingSummary(false);
+    }
+  };
 
   useEffect(() => {
     checkAdminStatus();
@@ -782,6 +809,26 @@ function AdminPage() {
 
           {/* Navigation and Actions */}
           <div className="flex items-center gap-3">
+            {/* Send Weekly Summary Button (only in users view) */}
+            {activeView === 'users' && (
+              <button
+                onClick={sendWeeklySummary}
+                disabled={isSendingSummary}
+                className="flex items-center px-3 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+              >
+                {isSendingSummary ? (
+                  <>
+                    <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full mr-2"></div>
+                    Sending...
+                  </>
+                ) : (
+                  <>
+                    <Mail className="h-4 w-4 mr-2" />
+                    Send Weekly Summary
+                  </>
+                )}
+              </button>
+            )}
             {/* Auto-Assign Colors Button (only in users view) */}
             {activeView === 'users' && (
               <button
