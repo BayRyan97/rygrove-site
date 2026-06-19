@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Bot, ChevronLeft, ChevronRight, Loader2, MessageSquare, SendHorizonal, Trash2, User } from 'lucide-react';
+import { Bot, ChevronLeft, ChevronRight, Download, Loader2, MessageSquare, SendHorizonal, Trash2, User } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../lib/supabase';
 import {
@@ -153,6 +153,50 @@ export function AskAiPage() {
   const toCurrency = (value: unknown) => {
     const num = Number(value || 0);
     return `$${num.toFixed(2)}`;
+  };
+
+  const exportTableToCSV = (tableConfig: TableConfig) => {
+    // Create CSV content
+    const csvRows: string[] = [];
+    
+    // Add title as first row
+    csvRows.push(tableConfig.title);
+    csvRows.push(''); // Empty row
+    
+    // Add headers
+    csvRows.push(tableConfig.columns.join(','));
+    
+    // Add data rows
+    tableConfig.rows.forEach(row => {
+      const escapedRow = row.map(cell => {
+        // Escape quotes and wrap in quotes if contains comma, quote, or newline
+        const cellStr = String(cell);
+        if (cellStr.includes(',') || cellStr.includes('"') || cellStr.includes('\n')) {
+          return `"${cellStr.replace(/"/g, '""')}`;
+        }
+        return cellStr;
+      });
+      csvRows.push(escapedRow.join(','));
+    });
+    
+    // Create blob and download
+    const csvContent = csvRows.join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    
+    const timestamp = new Date().toISOString().slice(0, 10);
+    const filename = `${tableConfig.title.replace(/\s+/g, '_')}_${timestamp}.csv`;
+    
+    link.setAttribute('href', url);
+    link.setAttribute('download', filename);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    
+    toast.success('CSV exported successfully!');
   };
 
   const buildResultTable = (message: ChatMessage): TableConfig | null => {
@@ -514,8 +558,17 @@ export function AskAiPage() {
 
                     {resultTable && (
                       <div className="mt-4 rounded-lg border border-gray-200 bg-white overflow-hidden">
-                        <div className="px-3 py-2 text-xs font-semibold text-gray-700 border-b border-gray-200 bg-gray-50">
-                          {resultTable.title}
+                        <div className="px-3 py-2 text-xs font-semibold text-gray-700 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
+                          <span>{resultTable.title}</span>
+                          <button
+                            type="button"
+                            onClick={() => exportTableToCSV(resultTable)}
+                            className="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-100 hover:border-gray-400 transition-colors"
+                            title="Export to CSV"
+                          >
+                            <Download className="h-3 w-3" />
+                            Export
+                          </button>
                         </div>
                         <div className="overflow-x-auto">
                           <table className="min-w-full text-xs">

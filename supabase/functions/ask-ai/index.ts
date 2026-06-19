@@ -103,6 +103,8 @@ interface AskToolContext {
   targetUserId: string | null;
   isPrivileged: boolean;
   fallbackUserId: string;
+  invoiceLocation?: string | null;
+  invoicePaymentStatus?: 'paid' | 'partial' | 'unpaid' | null;
 }
 
 const corsHeaders = {
@@ -620,6 +622,27 @@ function findLocationInQuestion(question: string, locations: string[]): string |
   return matches[0] || null;
 }
 
+function extractPaymentStatusFromQuestion(question: string): 'paid' | 'partial' | 'unpaid' | null {
+  const q = question.toLowerCase();
+  
+  // Check for unpaid/outstanding
+  if (q.includes('unpaid') || q.includes('outstanding') || q.includes('open') || q.includes('still owed') || q.includes('balance due')) {
+    return 'unpaid';
+  }
+  
+  // Check for partial payment
+  if (q.includes('partial') || q.includes('partially paid')) {
+    return 'partial';
+  }
+  
+  // Check for paid (but not in contexts like 'amount paid')
+  if ((q.includes('paid') && !q.includes('amount paid') && !q.includes('total paid')) || q.includes('complete') || q.includes('closed')) {
+    return 'paid';
+  }
+  
+  return null;
+}
+
 function buildToolRegistry() {
   const tools: Record<AskToolName, (args: Record<string, unknown>, ctx: AskToolContext) => Promise<Record<string, unknown>>> = {
     fetch_time_entries: async (_args, ctx) => {
@@ -814,6 +837,16 @@ function buildToolRegistry() {
         query = query.eq('created_by', ctx.targetUserId);
       } else if (!ctx.isPrivileged) {
         query = query.eq('created_by', ctx.fallbackUserId);
+      }
+
+      // Apply location filter if specified
+      if (ctx.invoiceLocation) {
+        query = query.eq('location', ctx.invoiceLocation);
+      }
+
+      // Apply payment status filter if specified
+      if (ctx.invoicePaymentStatus) {
+        query = query.eq('payment_status', ctx.invoicePaymentStatus);
       }
 
       const { data, error } = await query;
@@ -1275,6 +1308,10 @@ Deno.serve(async (req) => {
 
     const toolRegistry = buildToolRegistry();
     const toolCallRecords: AskToolCallRecord[] = [];
+    
+    // Declare filter variables upfront
+    let invoiceLocation: string | null = null;
+    let invoicePaymentStatus: 'paid' | 'partial' | 'unpaid' | null = null;
 
     const runTool = async (tool: AskToolName, args: Record<string, unknown>) => {
       toolCallRecords.push({ tool, args });
@@ -1285,6 +1322,8 @@ Deno.serve(async (req) => {
         targetUserId: targetProfile?.id || null,
         isPrivileged,
         fallbackUserId: user.id,
+        invoiceLocation,
+        invoicePaymentStatus,
       };
 
       return toolRegistry[tool](args, ctx);
@@ -1323,12 +1362,35 @@ Deno.serve(async (req) => {
     }
 
     let typedInvoices: InvoiceRow[] = [];
+    
     if (intent === 'invoices_count' || intent === 'invoices_total' || intent === 'invoices_outstanding') {
+      // Extract location from question if present
+      const { data: allInvoices } = await serviceClient
+        .from('invoices')
+        .select('location')
+        .eq('status', 'finalized')
+        .gte('created_at', `${startDate}T00:00:00.000Z`)
+        .lte('created_at', `${endDate}T23:59:59.999Z`);
+      
+      const knownLocations = Array.from(
+        new Set(
+          (allInvoices || [])
+            .map((inv: any) => inv.location as string | null)
+            .filter((loc): loc is string => Boolean(loc))
+        )
+      ).sort();
+      invoiceLocation = findLocationInQuestion(question, knownLocations);
+      
+      // Extract payment status from question if present
+      invoicePaymentStatus = extractPaymentStatusFromQuestion(question);
+      
       const invoicesResult = await runTool('fetch_invoices', {});
       typedInvoices = (invoicesResult.invoices || []) as InvoiceRow[];
       metadata = {
         ...metadata,
         source: 'invoices',
+        invoiceLocation,
+        invoicePaymentStatus,
       };
     }
 
