@@ -132,30 +132,154 @@ function getDateRangeFromQuestion(question: string): { startDate: string; endDat
   let startDate = new Date(endDate);
   let label = 'last 7 days';
 
-  if (q.includes('this month')) {
+  // Pattern: "last/past X days/weeks/months/years" or "X days/weeks/months/years ago"
+  const numericPattern = /(last|past|previous)\s+(\d+)\s+(day|days|week|weeks|month|months|year|years)|(\d+)\s+(day|days|week|weeks|month|months|year|years)\s+ago/i;
+  const numericMatch = question.match(numericPattern);
+  
+  if (numericMatch) {
+    const amount = parseInt(numericMatch[2] || numericMatch[4], 10);
+    const unit = (numericMatch[3] || numericMatch[5]).toLowerCase();
+    
+    if (unit.startsWith('day')) {
+      startDate = new Date(endDate);
+      startDate.setUTCDate(startDate.getUTCDate() - amount);
+      label = `last ${amount} day${amount === 1 ? '' : 's'}`;
+    } else if (unit.startsWith('week')) {
+      startDate = new Date(endDate);
+      startDate.setUTCDate(startDate.getUTCDate() - (amount * 7));
+      label = `last ${amount} week${amount === 1 ? '' : 's'}`;
+    } else if (unit.startsWith('month')) {
+      startDate = new Date(Date.UTC(endDate.getUTCFullYear(), endDate.getUTCMonth() - amount, 1));
+      label = `last ${amount} month${amount === 1 ? '' : 's'}`;
+    } else if (unit.startsWith('year')) {
+      startDate = new Date(Date.UTC(endDate.getUTCFullYear() - amount, 0, 1));
+      label = `last ${amount} year${amount === 1 ? '' : 's'}`;
+    }
+  }
+  // Specific month names
+  else if (/\b(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\b/i.test(q)) {
+    const monthNames = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+    const shortNames = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+    
+    let monthIndex = -1;
+    for (let i = 0; i < monthNames.length; i++) {
+      if (q.includes(monthNames[i]) || q.includes(shortNames[i])) {
+        monthIndex = i;
+        break;
+      }
+    }
+    
+    if (monthIndex >= 0) {
+      // Check for year specification
+      const yearMatch = question.match(/\b(20\d{2})\b/);
+      const year = yearMatch ? parseInt(yearMatch[1], 10) : now.getUTCFullYear();
+      
+      startDate = new Date(Date.UTC(year, monthIndex, 1));
+      const lastDay = new Date(Date.UTC(year, monthIndex + 1, 0));
+      endDate.setUTCFullYear(lastDay.getUTCFullYear());
+      endDate.setUTCMonth(lastDay.getUTCMonth());
+      endDate.setUTCDate(lastDay.getUTCDate());
+      
+      label = `${monthNames[monthIndex]} ${year}`;
+    }
+  }
+  // Specific year
+  else if (/\b(20\d{2})\b/.test(question) && !/month/.test(q)) {
+    const yearMatch = question.match(/\b(20\d{2})\b/);
+    if (yearMatch) {
+      const year = parseInt(yearMatch[1], 10);
+      startDate = new Date(Date.UTC(year, 0, 1));
+      endDate.setUTCFullYear(year);
+      endDate.setUTCMonth(11);
+      endDate.setUTCDate(31);
+      label = `${year}`;
+    }
+  }
+  // "this month"
+  else if (q.includes('this month')) {
     startDate = new Date(Date.UTC(endDate.getUTCFullYear(), endDate.getUTCMonth(), 1));
     label = 'this month';
-  } else if (q.includes('this year')) {
+  }
+  // "last month"
+  else if (q.includes('last month')) {
+    const lastMonth = endDate.getUTCMonth() - 1;
+    const year = lastMonth < 0 ? endDate.getUTCFullYear() - 1 : endDate.getUTCFullYear();
+    const month = lastMonth < 0 ? 11 : lastMonth;
+    startDate = new Date(Date.UTC(year, month, 1));
+    const lastDay = new Date(Date.UTC(year, month + 1, 0));
+    endDate.setUTCFullYear(lastDay.getUTCFullYear());
+    endDate.setUTCMonth(lastDay.getUTCMonth());
+    endDate.setUTCDate(lastDay.getUTCDate());
+    label = 'last month';
+  }
+  // "this year"
+  else if (q.includes('this year')) {
     startDate = new Date(Date.UTC(endDate.getUTCFullYear(), 0, 1));
     label = 'this year';
-  } else if (q.includes('this quarter')) {
+  }
+  // "last year"
+  else if (q.includes('last year')) {
+    const year = endDate.getUTCFullYear() - 1;
+    startDate = new Date(Date.UTC(year, 0, 1));
+    endDate.setUTCFullYear(year);
+    endDate.setUTCMonth(11);
+    endDate.setUTCDate(31);
+    label = 'last year';
+  }
+  // "this quarter"
+  else if (q.includes('this quarter')) {
     const quarterStartMonth = Math.floor(endDate.getUTCMonth() / 3) * 3;
     startDate = new Date(Date.UTC(endDate.getUTCFullYear(), quarterStartMonth, 1));
     label = 'this quarter';
-  } else if (q.includes('last 30 days')) {
-    startDate = new Date(endDate);
-    startDate.setUTCDate(startDate.getUTCDate() - 30);
-    label = 'last 30 days';
-  } else if (/last\s+3\s+month(s)?/.test(q)) {
-    startDate = new Date(Date.UTC(endDate.getUTCFullYear(), endDate.getUTCMonth() - 2, 1));
-    label = 'last 3 months';
-  } else if (q.includes('this week') || q.includes('week')) {
+  }
+  // "last quarter"
+  else if (q.includes('last quarter')) {
+    const currentQuarter = Math.floor(endDate.getUTCMonth() / 3);
+    const lastQuarter = currentQuarter === 0 ? 3 : currentQuarter - 1;
+    const year = currentQuarter === 0 ? endDate.getUTCFullYear() - 1 : endDate.getUTCFullYear();
+    const quarterStartMonth = lastQuarter * 3;
+    startDate = new Date(Date.UTC(year, quarterStartMonth, 1));
+    const quarterEndMonth = quarterStartMonth + 2;
+    const lastDay = new Date(Date.UTC(year, quarterEndMonth + 1, 0));
+    endDate.setUTCFullYear(lastDay.getUTCFullYear());
+    endDate.setUTCMonth(lastDay.getUTCMonth());
+    endDate.setUTCDate(lastDay.getUTCDate());
+    label = 'last quarter';
+  }
+  // "this week"
+  else if (q.includes('this week')) {
     const day = endDate.getUTCDay();
     const diffToMonday = day === 0 ? 6 : day - 1;
     startDate = new Date(endDate);
     startDate.setUTCDate(startDate.getUTCDate() - diffToMonday);
     label = 'this week';
-  } else {
+  }
+  // "last week"
+  else if (q.includes('last week')) {
+    const day = endDate.getUTCDay();
+    const diffToMonday = day === 0 ? 6 : day - 1;
+    const thisMonday = new Date(endDate);
+    thisMonday.setUTCDate(thisMonday.getUTCDate() - diffToMonday);
+    startDate = new Date(thisMonday);
+    startDate.setUTCDate(startDate.getUTCDate() - 7);
+    endDate.setTime(thisMonday.getTime());
+    endDate.setUTCDate(endDate.getUTCDate() - 1);
+    label = 'last week';
+  }
+  // "today"
+  else if (q.includes('today')) {
+    startDate = new Date(endDate);
+    label = 'today';
+  }
+  // "yesterday"
+  else if (q.includes('yesterday')) {
+    startDate = new Date(endDate);
+    startDate.setUTCDate(startDate.getUTCDate() - 1);
+    endDate.setTime(startDate.getTime());
+    label = 'yesterday';
+  }
+  // Default: last 7 days
+  else {
     startDate = new Date(endDate);
     startDate.setUTCDate(startDate.getUTCDate() - 7);
   }
@@ -323,6 +447,26 @@ function detectIntent(question: string): AskIntent {
 
 function hasExplicitDateRange(question: string): boolean {
   const q = question.toLowerCase();
+  
+  // Check for numeric patterns: "last/past X days/weeks/months/years" or "X days/weeks/months/years ago"
+  if (/(last|past|previous)\s+\d+\s+(day|days|week|weeks|month|months|year|years)/.test(q)) {
+    return true;
+  }
+  if (/\d+\s+(day|days|week|weeks|month|months|year|years)\s+ago/.test(q)) {
+    return true;
+  }
+  
+  // Check for specific month names
+  if (/\b(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\b/i.test(q)) {
+    return true;
+  }
+  
+  // Check for specific year (2020-2099)
+  if (/\b(20\d{2})\b/.test(q)) {
+    return true;
+  }
+  
+  // Check for relative phrases
   return (
     q.includes('today') ||
     q.includes('yesterday') ||
@@ -331,10 +475,9 @@ function hasExplicitDateRange(question: string): boolean {
     q.includes('this month') ||
     q.includes('last month') ||
     q.includes('this quarter') ||
+    q.includes('last quarter') ||
     q.includes('this year') ||
-    q.includes('last 7 days') ||
-    q.includes('last 30 days') ||
-    /last\s+3\s+month(s)?/.test(q)
+    q.includes('last year')
   );
 }
 
