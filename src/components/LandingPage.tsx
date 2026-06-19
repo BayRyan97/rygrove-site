@@ -1,10 +1,97 @@
 import { useState } from 'react';
-import { Menu, X, Clock, Receipt, FileText, Grid3x3, TrendingUp, Users, CheckCircle } from 'lucide-react';
+import {
+  Menu,
+  X,
+  Hammer,
+  Paintbrush,
+  Ruler,
+  Wrench,
+  HardHat,
+  Home,
+  CheckCircle,
+  type LucideIcon,
+} from 'lucide-react';
 import { AuthForm } from './AuthForm';
 
 interface LandingPageProps {
   isAuthenticated?: boolean;
 }
+
+interface ServiceCard {
+  title: string;
+  description: string;
+  bullets: string[];
+  icon: LucideIcon;
+}
+
+const serviceCards: ServiceCard[] = [
+  {
+    title: 'Site Work and Foundations',
+    description:
+      'Solid starts for long-lasting builds with prep, layout, and foundation work handled by experienced crews.',
+    bullets: [
+      'New builds and structural additions',
+      'Concrete and footing coordination',
+      'Built for durability and code compliance',
+    ],
+    icon: HardHat,
+  },
+  {
+    title: 'Framing and Carpentry',
+    description:
+      'Precision carpentry for both structural framing and finish details that define the final look.',
+    bullets: [
+      'Walls, headers, and structural corrections',
+      'Crown molding and interior trim',
+      'Clean lines and jobsite professionalism',
+    ],
+    icon: Hammer,
+  },
+  {
+    title: 'Interior and Exterior Painting',
+    description:
+      'Complete surface prep and high-quality paint application for durable finishes that hold up over time.',
+    bullets: [
+      'Surface repair, caulking, and priming',
+      'Residential and commercial finishes',
+      'Color guidance and finish matching',
+    ],
+    icon: Paintbrush,
+  },
+  {
+    title: 'Renovations and Build-outs',
+    description:
+      'From partial remodels to full-space transformations, we manage sequencing to keep your project moving.',
+    bullets: [
+      'Kitchens, baths, basements, and additions',
+      'Residential and light commercial projects',
+      'Milestone scheduling and updates',
+    ],
+    icon: Home,
+  },
+  {
+    title: 'Finish Work That Stands Out',
+    description:
+      'We take pride in the details that clients see every day, from trim transitions to final touchups.',
+    bullets: [
+      'Door, window, and trim installations',
+      'Crown molding and decorative carpentry',
+      'Punch-list completion with care',
+    ],
+    icon: Ruler,
+  },
+  {
+    title: 'Licensed Trade Coordination',
+    description:
+      'Need electrical or plumbing scope? We coordinate vetted partners so you still get one accountable team.',
+    bullets: [
+      'Trusted electrical and plumbing subcontractors',
+      'Coordinated scheduling across trades',
+      'Single point of communication',
+    ],
+    icon: Wrench,
+  },
+];
 
 export function LandingPage({ isAuthenticated = false }: LandingPageProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -23,8 +110,7 @@ export function LandingPage({ isAuthenticated = false }: LandingPageProps) {
 
   const handleContactSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // TODO: Implement contact form submission
-    alert('Thank you for your interest! We will be in touch shortly.');
+    alert('Thank you for reaching out to Rygrove. We will be in touch shortly.');
     setContactEmail('');
     setContactMessage('');
   };
@@ -48,225 +134,168 @@ export function LandingPage({ isAuthenticated = false }: LandingPageProps) {
     );
   }
 
-  // When authenticated, show full content without header/footer wrapper
+  const coreContent = (
+    <>
+      <section className="gradient-bg py-16 md:py-24 min-h-[70vh] flex items-center justify-center">
+        <div className="max-w-3xl mx-auto px-4 text-center">
+          <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold text-gray-800 mb-3">
+            Full-Scope Construction. <span className="text-blue-600">Built Right Since 1999.</span>
+          </h1>
+          <p className="text-base md:text-lg text-gray-700 mb-3">
+            Rygrove is a family-built construction company established in 1999. From foundation work to crown molding to final paint, we deliver skilled craftsmanship through every phase.
+          </p>
+          <p className="text-sm md:text-base text-gray-700 mb-6">
+            When specialty trades are needed, we coordinate trusted licensed partners for electrical and plumbing so your project stays on track from start to finish.
+          </p>
+
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <button
+              onClick={handleLoginClick}
+              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-8 rounded-lg transition transform hover:-translate-y-0.5 shadow-lg hover:shadow-xl"
+            >
+              Employee Log In
+            </button>
+            <a
+              href="#contact"
+              className="bg-white border-2 border-blue-600 text-blue-700 hover:bg-blue-50 font-semibold py-3 px-8 rounded-lg transition"
+            >
+              Request Consultation
+            </a>
+          </div>
+        </div>
+      </section>
+
+      <section className="py-12 md:py-16 bg-gray-50">
+        <div className="container mx-auto px-4">
+          <h2 className="text-3xl md:text-4xl font-bold text-center text-gray-800 mb-8">
+            Why Homeowners and Property Owners Choose Rygrove
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+            <div className="bg-white rounded-lg p-6 shadow-sm hover:shadow-md transition">
+              <h3 className="font-semibold text-gray-800 mb-2">One Team, Whole Project</h3>
+              <p className="text-gray-600">
+                We handle rough and finish scopes so you are not juggling multiple crews for every stage.
+              </p>
+            </div>
+            <div className="bg-white rounded-lg p-6 shadow-sm hover:shadow-md transition">
+              <h3 className="font-semibold text-gray-800 mb-2">Craftsmanship and Detail</h3>
+              <p className="text-gray-600">
+                Foundations, framing, trim, molding, and paint are all completed with consistent quality standards.
+              </p>
+            </div>
+            <div className="bg-white rounded-lg p-6 shadow-sm hover:shadow-md transition">
+              <h3 className="font-semibold text-gray-800 mb-2">Trusted Since 1999</h3>
+              <p className="text-gray-600">
+                Founded by your father and built on reputation, Rygrove has served clients for decades with reliable delivery.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="features" className="py-12 md:py-16 bg-white">
+        <div className="container mx-auto px-4">
+          <h2 className="text-3xl md:text-4xl font-bold text-center text-gray-800 mb-8">
+            Our Construction Services
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {serviceCards.map((service) => {
+              const Icon = service.icon;
+
+              return (
+                <div key={service.title} className="bg-white rounded-lg border border-gray-200 p-8 hover:shadow-lg transition">
+                  <Icon className="text-blue-600 mb-4" size={32} />
+                  <h3 className="text-xl font-semibold text-gray-800 mb-3">{service.title}</h3>
+                  <p className="text-gray-600 mb-4">{service.description}</p>
+                  <ul className="space-y-2 text-sm text-gray-600">
+                    {service.bullets.map((bullet) => (
+                      <li key={bullet} className="flex items-center">
+                        <CheckCircle size={16} className="text-green-600 mr-2" />
+                        {bullet}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      <section id="benefits" className="py-12 md:py-16 bg-gray-50">
+        <div className="container mx-auto px-4">
+          <h2 className="text-3xl md:text-4xl font-bold text-center text-gray-800 mb-8">
+            The Rygrove Difference
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-5xl mx-auto">
+            <div className="bg-white rounded-lg p-8 shadow-sm hover:shadow-md transition border-l-4 border-blue-600">
+              <h3 className="text-xl font-semibold text-gray-800 mb-3">Family Legacy</h3>
+              <p className="text-gray-600 mb-4">
+                Founded by your father in 1999, Rygrove was built on pride in workmanship, honest dealing, and projects done right.
+              </p>
+              <ul className="space-y-2 text-sm text-gray-600">
+                <li>✓ Established reputation in the community</li>
+                <li>✓ Consistent standards across every job</li>
+                <li>✓ Respect for your property and timeline</li>
+              </ul>
+            </div>
+
+            <div className="bg-white rounded-lg p-8 shadow-sm hover:shadow-md transition border-l-4 border-blue-600">
+              <h3 className="text-xl font-semibold text-gray-800 mb-3">Start-to-Finish Capability</h3>
+              <p className="text-gray-600 mb-4">
+                We carry projects from structural work to finish carpentry and painting under one coordinated plan.
+              </p>
+              <ul className="space-y-2 text-sm text-gray-600">
+                <li>✓ Fewer handoff delays</li>
+                <li>✓ Better quality control</li>
+                <li>✓ Clear milestones and communication</li>
+              </ul>
+            </div>
+
+            <div className="bg-white rounded-lg p-8 shadow-sm hover:shadow-md transition border-l-4 border-blue-600">
+              <h3 className="text-xl font-semibold text-gray-800 mb-3">Practical Problem Solving</h3>
+              <p className="text-gray-600 mb-4">
+                Every property is different. We assess what is in front of us and deliver solutions that are solid, safe, and built to last.
+              </p>
+              <ul className="space-y-2 text-sm text-gray-600">
+                <li>✓ Field-tested construction judgment</li>
+                <li>✓ Clean execution without shortcuts</li>
+                <li>✓ Transparent updates as work progresses</li>
+              </ul>
+            </div>
+
+            <div className="bg-white rounded-lg p-8 shadow-sm hover:shadow-md transition border-l-4 border-blue-600">
+              <h3 className="text-xl font-semibold text-gray-800 mb-3">Trusted Trade Partners</h3>
+              <p className="text-gray-600 mb-4">
+                For scopes we do not self-perform, like electrical and plumbing, we bring in qualified partners while maintaining project control.
+              </p>
+              <ul className="space-y-2 text-sm text-gray-600">
+                <li>✓ Licensed and vetted specialists</li>
+                <li>✓ Integrated scheduling with our crew</li>
+                <li>✓ Accountability through one lead contractor</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+    </>
+  );
+
   if (isAuthenticated) {
-    return (
-      <div className="bg-white">
-        {/* Hero Section */}
-        <section className="gradient-bg py-24 md:py-32 min-h-screen flex items-center justify-center">
-          <div className="container mx-auto px-4 text-center">
-            <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-gray-800 mb-6">
-              Manage Operations. <span className="text-blue-600">Maximize Profitability.</span>
-            </h1>
-            <p className="text-lg md:text-xl text-gray-600 mb-4 max-w-2xl mx-auto">
-              Rygrove is the all-in-one platform for contractors and small businesses to track time, manage expenses, generate invoices, and plan projects—all in one place.
-            </p>
-            <p className="text-gray-600 mb-8 max-w-2xl mx-auto">
-              Stop wasting time on spreadsheets. Get visibility into profitability. Get paid faster.
-            </p>
-          </div>
-        </section>
-
-        {/* Problems Section */}
-        <section className="py-12 md:py-16 bg-gray-50">
-          <div className="container mx-auto px-4">
-            <h2 className="text-3xl md:text-4xl font-bold text-center text-gray-800 mb-8">
-              The Problem With Manual Processes
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-4xl mx-auto">
-              <div className="bg-white rounded-lg p-6 shadow-sm hover:shadow-md transition">
-                <div className="text-3xl mb-3">⏱️</div>
-                <h3 className="font-semibold text-gray-800 mb-2">Hours Spent on Admin</h3>
-                <p className="text-gray-600">
-                  Manual time entry, spreadsheet management, and invoice creation drain hours from your actual business.
-                </p>
-              </div>
-              <div className="bg-white rounded-lg p-6 shadow-sm hover:shadow-md transition">
-                <div className="text-3xl mb-3">💸</div>
-                <h3 className="font-semibold text-gray-800 mb-2">Invisible Profitability</h3>
-                <p className="text-gray-600">
-                  Without clear time and expense tracking, you don't know which projects are actually profitable.
-                </p>
-              </div>
-              <div className="bg-white rounded-lg p-6 shadow-sm hover:shadow-md transition">
-                <div className="text-3xl mb-3">📄</div>
-                <h3 className="font-semibold text-gray-800 mb-2">Late Payments</h3>
-                <p className="text-gray-600">
-                  Manual invoicing means delayed billing, slower payments, and cash flow problems.
-                </p>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* Features Section */}
-        <section id="features" className="py-12 md:py-16 bg-white">
-          <div className="container mx-auto px-4">
-            <h2 className="text-3xl md:text-4xl font-bold text-center text-gray-800 mb-8">
-              Everything You Need to Run Your Business
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {/* Time Tracking */}
-              <div className="bg-white rounded-lg border border-gray-200 p-8 hover:shadow-lg transition">
-                <Clock className="text-blue-600 mb-4" size={32} />
-                <h3 className="text-xl font-semibold text-gray-800 mb-3">Time Tracking</h3>
-                <p className="text-gray-600 mb-4">
-                  Log work hours with flexible scheduling, classify work types, and track lunch breaks.
-                </p>
-                <ul className="space-y-2 text-sm text-gray-600">
-                  <li className="flex items-center"><CheckCircle size={16} className="text-green-600 mr-2" /> Full & partial day logging</li>
-                  <li className="flex items-center"><CheckCircle size={16} className="text-green-600 mr-2" /> Work type classification</li>
-                  <li className="flex items-center"><CheckCircle size={16} className="text-green-600 mr-2" /> Admin override capability</li>
-                </ul>
-              </div>
-
-              {/* Expense & Receipts */}
-              <div className="bg-white rounded-lg border border-gray-200 p-8 hover:shadow-lg transition">
-                <Receipt className="text-blue-600 mb-4" size={32} />
-                <h3 className="text-xl font-semibold text-gray-800 mb-3">Expense Management</h3>
-                <p className="text-gray-600 mb-4">
-                  Track expenses with receipt uploads, automatic categorization, and full audit trail.
-                </p>
-                <ul className="space-y-2 text-sm text-gray-600">
-                  <li className="flex items-center"><CheckCircle size={16} className="text-green-600 mr-2" /> Receipt image storage</li>
-                  <li className="flex items-center"><CheckCircle size={16} className="text-green-600 mr-2" /> Category management</li>
-                  <li className="flex items-center"><CheckCircle size={16} className="text-green-600 mr-2" /> Invoice integration</li>
-                </ul>
-              </div>
-
-              {/* Invoicing */}
-              <div className="bg-white rounded-lg border border-gray-200 p-8 hover:shadow-lg transition">
-                <FileText className="text-blue-600 mb-4" size={32} />
-                <h3 className="text-xl font-semibold text-gray-800 mb-3">Professional Invoicing</h3>
-                <p className="text-gray-600 mb-4">
-                  Generate invoices from tracked time and expenses. Get paid faster with polished, detailed billing.
-                </p>
-                <ul className="space-y-2 text-sm text-gray-600">
-                  <li className="flex items-center"><CheckCircle size={16} className="text-green-600 mr-2" /> Automated calculations</li>
-                  <li className="flex items-center"><CheckCircle size={16} className="text-green-600 mr-2" /> PDF export</li>
-                  <li className="flex items-center"><CheckCircle size={16} className="text-green-600 mr-2" /> Tax & line item support</li>
-                </ul>
-              </div>
-
-              {/* Project Planning */}
-              <div className="bg-white rounded-lg border border-gray-200 p-8 hover:shadow-lg transition">
-                <Grid3x3 className="text-blue-600 mb-4" size={32} />
-                <h3 className="text-xl font-semibold text-gray-800 mb-3">Project Planning</h3>
-                <p className="text-gray-600 mb-4">
-                  Visualize timelines with interactive Gantt charts, assign tasks, and track progress in real-time.
-                </p>
-                <ul className="space-y-2 text-sm text-gray-600">
-                  <li className="flex items-center"><CheckCircle size={16} className="text-green-600 mr-2" /> Drag-and-drop scheduling</li>
-                  <li className="flex items-center"><CheckCircle size={16} className="text-green-600 mr-2" /> Color-coded categories</li>
-                  <li className="flex items-center"><CheckCircle size={16} className="text-green-600 mr-2" /> Team collaboration notes</li>
-                </ul>
-              </div>
-
-              {/* Labor Cost Insights */}
-              <div className="bg-white rounded-lg border border-gray-200 p-8 hover:shadow-lg transition">
-                <TrendingUp className="text-blue-600 mb-4" size={32} />
-                <h3 className="text-xl font-semibold text-gray-800 mb-3">Profitability Insights</h3>
-                <p className="text-gray-600 mb-4">
-                  Understand project profitability at a glance with labor cost calculations and analytics.
-                </p>
-                <ul className="space-y-2 text-sm text-gray-600">
-                  <li className="flex items-center"><CheckCircle size={16} className="text-green-600 mr-2" /> Automatic cost calculations</li>
-                  <li className="flex items-center"><CheckCircle size={16} className="text-green-600 mr-2" /> Dashboard analytics</li>
-                  <li className="flex items-center"><CheckCircle size={16} className="text-green-600 mr-2" /> Custom rate management</li>
-                </ul>
-              </div>
-
-              {/* Team Management */}
-              <div className="bg-white rounded-lg border border-gray-200 p-8 hover:shadow-lg transition">
-                <Users className="text-blue-600 mb-4" size={32} />
-                <h3 className="text-xl font-semibold text-gray-800 mb-3">Team Management</h3>
-                <p className="text-gray-600 mb-4">
-                  Control access with role-based permissions. Admin, supervisor, and employee roles with granular controls.
-                </p>
-                <ul className="space-y-2 text-sm text-gray-600">
-                  <li className="flex items-center"><CheckCircle size={16} className="text-green-600 mr-2" /> Role-based access</li>
-                  <li className="flex items-center"><CheckCircle size={16} className="text-green-600 mr-2" /> Profile management</li>
-                  <li className="flex items-center"><CheckCircle size={16} className="text-green-600 mr-2" /> Activity monitoring</li>
-                </ul>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* Use Cases / Benefits by Role */}
-        <section id="benefits" className="py-12 md:py-16 bg-gray-50">
-          <div className="container mx-auto px-4">
-            <h2 className="text-3xl md:text-4xl font-bold text-center text-gray-800 mb-8">
-              Built for Your Entire Team
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
-              <div className="bg-white rounded-lg p-8 shadow-sm hover:shadow-md transition border-l-4 border-blue-600">
-                <h3 className="text-xl font-semibold text-gray-800 mb-3">👔 Business Owners</h3>
-                <p className="text-gray-600 mb-4">
-                  Know exactly which projects are profitable. See labor costs, expenses, and margins in real-time. Make data-driven decisions about pricing and resource allocation.
-                </p>
-                <ul className="space-y-2 text-sm text-gray-600">
-                  <li>✓ Profitability per project</li>
-                  <li>✓ Labor cost visibility</li>
-                  <li>✓ Team utilization rates</li>
-                </ul>
-              </div>
-
-              <div className="bg-white rounded-lg p-8 shadow-sm hover:shadow-md transition border-l-4 border-blue-600">
-                <h3 className="text-xl font-semibold text-gray-800 mb-3">📋 Project Managers</h3>
-                <p className="text-gray-600 mb-4">
-                  Visualize timelines, delegate tasks, and track progress instantly. Stay on schedule, communicate clearly with your team, and manage scope changes.
-                </p>
-                <ul className="space-y-2 text-sm text-gray-600">
-                  <li>✓ Gantt chart visualization</li>
-                  <li>✓ Task assignment & tracking</li>
-                  <li>✓ Team notes & collaboration</li>
-                </ul>
-              </div>
-
-              <div className="bg-white rounded-lg p-8 shadow-sm hover:shadow-md transition border-l-4 border-blue-600">
-                <h3 className="text-xl font-semibold text-gray-800 mb-3">💼 Accountants/Bookkeepers</h3>
-                <p className="text-gray-600 mb-4">
-                  Automate expense tracking with receipt documentation. Categorize costs instantly. Export data for tax filings and financial reporting.
-                </p>
-                <ul className="space-y-2 text-sm text-gray-600">
-                  <li>✓ Receipt image storage</li>
-                  <li>✓ Expense categorization</li>
-                  <li>✓ CSV/XLSX export</li>
-                </ul>
-              </div>
-
-              <div className="bg-white rounded-lg p-8 shadow-sm hover:shadow-md transition border-l-4 border-blue-600">
-                <h3 className="text-xl font-semibold text-gray-800 mb-3">👨‍💼 Employees/Contractors</h3>
-                <p className="text-gray-600 mb-4">
-                  Simple, fast time logging. Track expenses and get reimbursed quickly. Transparent communication with your team about projects and timelines.
-                </p>
-                <ul className="space-y-2 text-sm text-gray-600">
-                  <li>✓ Quick time entry</li>
-                  <li>✓ Expense reimbursement</li>
-                  <li>✓ Project visibility</li>
-                </ul>
-              </div>
-            </div>
-          </div>
-        </section>
-      </div>
-    );
+    return <div className="bg-white">{coreContent}</div>;
   }
 
   return (
     <div className="bg-white">
-      {/* Header */}
       <header className="sticky top-0 z-50 bg-white shadow-sm border-b border-gray-200">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-blue-500 bg-clip-text text-transparent">
             RYGROVE
           </div>
-          
-          {/* Desktop Navigation */}
+
           <nav className="hidden md:flex items-center space-x-8">
-            <a href="#features" className="text-gray-700 hover:text-blue-600 transition">Features</a>
-            <a href="#benefits" className="text-gray-700 hover:text-blue-600 transition">For Your Team</a>
+            <a href="#features" className="text-gray-700 hover:text-blue-600 transition">Services</a>
+            <a href="#benefits" className="text-gray-700 hover:text-blue-600 transition">Why Rygrove</a>
             <a href="#contact" className="text-gray-700 hover:text-blue-600 transition">Contact</a>
             <button
               onClick={handleLoginClick}
@@ -276,7 +305,6 @@ export function LandingPage({ isAuthenticated = false }: LandingPageProps) {
             </button>
           </nav>
 
-          {/* Hamburger Menu Button */}
           <button
             onClick={toggleMenu}
             className="md:hidden p-2 text-gray-600 hover:text-gray-800 transition"
@@ -286,7 +314,6 @@ export function LandingPage({ isAuthenticated = false }: LandingPageProps) {
           </button>
         </div>
 
-        {/* Mobile Menu */}
         {isMenuOpen && (
           <nav className="md:hidden bg-white border-t border-gray-200 px-4 py-4">
             <ul className="space-y-3">
@@ -296,7 +323,7 @@ export function LandingPage({ isAuthenticated = false }: LandingPageProps) {
                   onClick={() => setIsMenuOpen(false)}
                   className="block px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition"
                 >
-                  Features
+                  Services
                 </a>
               </li>
               <li>
@@ -305,7 +332,7 @@ export function LandingPage({ isAuthenticated = false }: LandingPageProps) {
                   onClick={() => setIsMenuOpen(false)}
                   className="block px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition"
                 >
-                  For Your Team
+                  Why Rygrove
                 </a>
               </li>
               <li>
@@ -330,229 +357,16 @@ export function LandingPage({ isAuthenticated = false }: LandingPageProps) {
         )}
       </header>
 
-      {/* Hero Section */}
-      <section className="gradient-bg py-16 md:py-24 min-h-[70vh] flex items-center justify-center">
-        <div className="max-w-2xl mx-auto px-4 text-center">
-          <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold text-gray-800 mb-3">
-            Manage Operations. <span className="text-blue-600">Maximize Profitability.</span>
-          </h1>
-          <p className="text-base md:text-lg text-gray-600 mb-2">
-            Rygrove is the all-in-one platform for contractors and small businesses to track time, manage expenses, generate invoices, and plan projects—all in one place.
-          </p>
-          <p className="text-sm md:text-base text-gray-600 mb-4">
-            Stop wasting time on spreadsheets. Get visibility into profitability. Get paid faster.
-          </p>
-          
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <button
-              onClick={handleLoginClick}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-8 rounded-lg transition transform hover:-translate-y-0.5 shadow-lg hover:shadow-xl"
-            >
-              Employee Log In
-            </button>
-            <a
-              href="#contact"
-              className="bg-white border-2 border-blue-600 text-blue-600 hover:bg-blue-50 font-semibold py-3 px-8 rounded-lg transition"
-            >
-              Schedule Demo
-            </a>
-          </div>
-        </div>
-      </section>
+      {coreContent}
 
-      {/* Problems Section */}
-      <section className="py-12 md:py-16 bg-gray-50">
-        <div className="container mx-auto px-4">
-          <h2 className="text-3xl md:text-4xl font-bold text-center text-gray-800 mb-8">
-            The Problem With Manual Processes
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-4xl mx-auto">
-            <div className="bg-white rounded-lg p-6 shadow-sm hover:shadow-md transition">
-              <div className="text-3xl mb-3">⏱️</div>
-              <h3 className="font-semibold text-gray-800 mb-2">Hours Spent on Admin</h3>
-              <p className="text-gray-600">
-                Manual time entry, spreadsheet management, and invoice creation drain hours from your actual business.
-              </p>
-            </div>
-            <div className="bg-white rounded-lg p-6 shadow-sm hover:shadow-md transition">
-              <div className="text-3xl mb-3">💸</div>
-              <h3 className="font-semibold text-gray-800 mb-2">Invisible Profitability</h3>
-              <p className="text-gray-600">
-                Without clear time and expense tracking, you don't know which projects are actually profitable.
-              </p>
-            </div>
-            <div className="bg-white rounded-lg p-6 shadow-sm hover:shadow-md transition">
-              <div className="text-3xl mb-3">📄</div>
-              <h3 className="font-semibold text-gray-800 mb-2">Late Payments</h3>
-              <p className="text-gray-600">
-                Manual invoicing means delayed billing, slower payments, and cash flow problems.
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Features Section */}
-      <section id="features" className="py-12 md:py-16 bg-white">
-        <div className="container mx-auto px-4">
-          <h2 className="text-3xl md:text-4xl font-bold text-center text-gray-800 mb-8">
-            Everything You Need to Run Your Business
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {/* Time Tracking */}
-            <div className="bg-white rounded-lg border border-gray-200 p-8 hover:shadow-lg transition">
-              <Clock className="text-blue-600 mb-4" size={32} />
-              <h3 className="text-xl font-semibold text-gray-800 mb-3">Time Tracking</h3>
-              <p className="text-gray-600 mb-4">
-                Log work hours with flexible scheduling, classify work types, and track lunch breaks.
-              </p>
-              <ul className="space-y-2 text-sm text-gray-600">
-                <li className="flex items-center"><CheckCircle size={16} className="text-green-600 mr-2" /> Full & partial day logging</li>
-                <li className="flex items-center"><CheckCircle size={16} className="text-green-600 mr-2" /> Work type classification</li>
-                <li className="flex items-center"><CheckCircle size={16} className="text-green-600 mr-2" /> Admin override capability</li>
-              </ul>
-            </div>
-
-            {/* Expense & Receipts */}
-            <div className="bg-white rounded-lg border border-gray-200 p-8 hover:shadow-lg transition">
-              <Receipt className="text-blue-600 mb-4" size={32} />
-              <h3 className="text-xl font-semibold text-gray-800 mb-3">Expense Management</h3>
-              <p className="text-gray-600 mb-4">
-                Track expenses with receipt uploads, automatic categorization, and full audit trail.
-              </p>
-              <ul className="space-y-2 text-sm text-gray-600">
-                <li className="flex items-center"><CheckCircle size={16} className="text-green-600 mr-2" /> Receipt image storage</li>
-                <li className="flex items-center"><CheckCircle size={16} className="text-green-600 mr-2" /> Category management</li>
-                <li className="flex items-center"><CheckCircle size={16} className="text-green-600 mr-2" /> Invoice integration</li>
-              </ul>
-            </div>
-
-            {/* Invoicing */}
-            <div className="bg-white rounded-lg border border-gray-200 p-8 hover:shadow-lg transition">
-              <FileText className="text-blue-600 mb-4" size={32} />
-              <h3 className="text-xl font-semibold text-gray-800 mb-3">Professional Invoicing</h3>
-              <p className="text-gray-600 mb-4">
-                Generate invoices from tracked time and expenses. Get paid faster with polished, detailed billing.
-              </p>
-              <ul className="space-y-2 text-sm text-gray-600">
-                <li className="flex items-center"><CheckCircle size={16} className="text-green-600 mr-2" /> Automated calculations</li>
-                <li className="flex items-center"><CheckCircle size={16} className="text-green-600 mr-2" /> PDF export</li>
-                <li className="flex items-center"><CheckCircle size={16} className="text-green-600 mr-2" /> Tax & line item support</li>
-              </ul>
-            </div>
-
-            {/* Project Planning */}
-            <div className="bg-white rounded-lg border border-gray-200 p-8 hover:shadow-lg transition">
-              <Grid3x3 className="text-blue-600 mb-4" size={32} />
-              <h3 className="text-xl font-semibold text-gray-800 mb-3">Project Planning</h3>
-              <p className="text-gray-600 mb-4">
-                Visualize timelines with interactive Gantt charts, assign tasks, and track progress in real-time.
-              </p>
-              <ul className="space-y-2 text-sm text-gray-600">
-                <li className="flex items-center"><CheckCircle size={16} className="text-green-600 mr-2" /> Drag-and-drop scheduling</li>
-                <li className="flex items-center"><CheckCircle size={16} className="text-green-600 mr-2" /> Color-coded categories</li>
-                <li className="flex items-center"><CheckCircle size={16} className="text-green-600 mr-2" /> Team collaboration notes</li>
-              </ul>
-            </div>
-
-            {/* Labor Cost Insights */}
-            <div className="bg-white rounded-lg border border-gray-200 p-8 hover:shadow-lg transition">
-              <TrendingUp className="text-blue-600 mb-4" size={32} />
-              <h3 className="text-xl font-semibold text-gray-800 mb-3">Profitability Insights</h3>
-              <p className="text-gray-600 mb-4">
-                Understand project profitability at a glance with labor cost calculations and analytics.
-              </p>
-              <ul className="space-y-2 text-sm text-gray-600">
-                <li className="flex items-center"><CheckCircle size={16} className="text-green-600 mr-2" /> Automatic cost calculations</li>
-                <li className="flex items-center"><CheckCircle size={16} className="text-green-600 mr-2" /> Dashboard analytics</li>
-                <li className="flex items-center"><CheckCircle size={16} className="text-green-600 mr-2" /> Custom rate management</li>
-              </ul>
-            </div>
-
-            {/* Team Management */}
-            <div className="bg-white rounded-lg border border-gray-200 p-8 hover:shadow-lg transition">
-              <Users className="text-blue-600 mb-4" size={32} />
-              <h3 className="text-xl font-semibold text-gray-800 mb-3">Team Management</h3>
-              <p className="text-gray-600 mb-4">
-                Control access with role-based permissions. Admin, supervisor, and employee roles with granular controls.
-              </p>
-              <ul className="space-y-2 text-sm text-gray-600">
-                <li className="flex items-center"><CheckCircle size={16} className="text-green-600 mr-2" /> Role-based access</li>
-                <li className="flex items-center"><CheckCircle size={16} className="text-green-600 mr-2" /> Profile management</li>
-                <li className="flex items-center"><CheckCircle size={16} className="text-green-600 mr-2" /> Activity monitoring</li>
-              </ul>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Use Cases / Benefits by Role */}
-      <section id="benefits" className="py-12 md:py-16 bg-gray-50">
-        <div className="container mx-auto px-4">
-          <h2 className="text-3xl md:text-4xl font-bold text-center text-gray-800 mb-8">
-            Built for Your Entire Team
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
-            <div className="bg-white rounded-lg p-8 shadow-sm hover:shadow-md transition border-l-4 border-blue-600">
-              <h3 className="text-xl font-semibold text-gray-800 mb-3">👔 Business Owners</h3>
-              <p className="text-gray-600 mb-4">
-                Know exactly which projects are profitable. See labor costs, expenses, and margins in real-time. Make data-driven decisions about pricing and resource allocation.
-              </p>
-              <ul className="space-y-2 text-sm text-gray-600">
-                <li>✓ Profitability per project</li>
-                <li>✓ Labor cost visibility</li>
-                <li>✓ Team utilization rates</li>
-              </ul>
-            </div>
-
-            <div className="bg-white rounded-lg p-8 shadow-sm hover:shadow-md transition border-l-4 border-blue-600">
-              <h3 className="text-xl font-semibold text-gray-800 mb-3">📋 Project Managers</h3>
-              <p className="text-gray-600 mb-4">
-                Visualize timelines, delegate tasks, and track progress instantly. Stay on schedule, communicate clearly with your team, and manage scope changes.
-              </p>
-              <ul className="space-y-2 text-sm text-gray-600">
-                <li>✓ Gantt chart visualization</li>
-                <li>✓ Task assignment & tracking</li>
-                <li>✓ Team notes & collaboration</li>
-              </ul>
-            </div>
-
-            <div className="bg-white rounded-lg p-8 shadow-sm hover:shadow-md transition border-l-4 border-blue-600">
-              <h3 className="text-xl font-semibold text-gray-800 mb-3">💼 Accountants/Bookkeepers</h3>
-              <p className="text-gray-600 mb-4">
-                Automate expense tracking with receipt documentation. Categorize costs instantly. Export data for tax filings and financial reporting.
-              </p>
-              <ul className="space-y-2 text-sm text-gray-600">
-                <li>✓ Receipt image storage</li>
-                <li>✓ Expense categorization</li>
-                <li>✓ CSV/XLSX export</li>
-              </ul>
-            </div>
-
-            <div className="bg-white rounded-lg p-8 shadow-sm hover:shadow-md transition border-l-4 border-blue-600">
-              <h3 className="text-xl font-semibold text-gray-800 mb-3">👨‍💼 Employees/Contractors</h3>
-              <p className="text-gray-600 mb-4">
-                Simple, fast time logging. Track expenses and get reimbursed quickly. Transparent communication with your team about projects and timelines.
-              </p>
-              <ul className="space-y-2 text-sm text-gray-600">
-                <li>✓ Quick time entry</li>
-                <li>✓ Expense reimbursement</li>
-                <li>✓ Project visibility</li>
-              </ul>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Contact / Demo CTA Section */}
       <section id="contact" className="py-12 md:py-16 bg-blue-600 text-white">
         <div className="container mx-auto px-4">
           <div className="max-w-2xl mx-auto">
             <h2 className="text-3xl md:text-4xl font-bold text-center mb-4">
-              Ready to Take Control of Your Operations?
+              Planning a Build, Remodel, or Finish Project?
             </h2>
             <p className="text-center text-blue-100 mb-8">
-              Join contractors and small businesses already using Rygrove to streamline operations and maximize profitability.
+              Tell us what you are planning and we will reach out to discuss scope, timeline, and next steps.
             </p>
 
             <form onSubmit={handleContactSubmit} className="bg-white rounded-lg p-8 shadow-xl">
@@ -572,14 +386,14 @@ export function LandingPage({ isAuthenticated = false }: LandingPageProps) {
 
               <div className="mb-6">
                 <label className="block text-gray-700 font-semibold mb-2">
-                  Tell us about your business (optional)
+                  Tell us about your project (optional)
                 </label>
                 <textarea
                   value={contactMessage}
                   onChange={(e) => setContactMessage(e.target.value)}
                   rows={4}
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-600 text-gray-900"
-                  placeholder="What industry are you in? How many team members?"
+                  placeholder="Property type, project goals, location, and timing"
                 />
               </div>
 
@@ -587,31 +401,30 @@ export function LandingPage({ isAuthenticated = false }: LandingPageProps) {
                 type="submit"
                 className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition transform hover:-translate-y-0.5"
               >
-                Schedule Demo / Get Started
+                Request a Consultation
               </button>
               <p className="text-center text-gray-600 text-sm mt-4">
-                We'll be in touch within 24 hours.
+                We aim to respond within 24 hours.
               </p>
             </form>
           </div>
         </div>
       </section>
 
-      {/* Footer */}
       <footer className="bg-gray-800 text-gray-300 py-8">
         <div className="container mx-auto px-4">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
             <div>
               <div className="text-white font-bold text-lg mb-4">RYGROVE</div>
               <p className="text-gray-400">
-                All-in-one operations management for contractors and small businesses.
+                Full-service construction and finishing company, proudly building since 1999.
               </p>
             </div>
             <div>
-              <h4 className="text-white font-semibold mb-4">Product</h4>
+              <h4 className="text-white font-semibold mb-4">Company</h4>
               <ul className="space-y-2 text-sm">
-                <li><a href="#features" className="hover:text-white transition">Features</a></li>
-                <li><a href="#benefits" className="hover:text-white transition">For Your Team</a></li>
+                <li><a href="#features" className="hover:text-white transition">Services</a></li>
+                <li><a href="#benefits" className="hover:text-white transition">Why Rygrove</a></li>
                 <li><button onClick={handleLoginClick} className="hover:text-white transition">Employee Log In</button></li>
               </ul>
             </div>
