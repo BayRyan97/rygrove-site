@@ -27,6 +27,15 @@ interface NameResolution {
   clarificationOptions: string[];
 }
 
+interface PriorConversationContext {
+  intent?: AskIntent;
+  subject?: string;
+  targetUserId?: string | null;
+  startDate?: string;
+  endDate?: string;
+  rangeLabel?: string;
+}
+
 interface LocationHours {
   location: string;
   hours: number;
@@ -265,6 +274,93 @@ function detectIntent(question: string): AskIntent {
   return 'hours_summary';
 }
 
+function hasExplicitDateRange(question: string): boolean {
+  const q = question.toLowerCase();
+  return (
+    q.includes('today') ||
+    q.includes('yesterday') ||
+    q.includes('this week') ||
+    q.includes('last week') ||
+    q.includes('this month') ||
+    q.includes('last month') ||
+    q.includes('this quarter') ||
+    q.includes('this year') ||
+    q.includes('last 7 days') ||
+    q.includes('last 30 days')
+  );
+}
+
+function hasIntentSignals(question: string): boolean {
+  const q = question.toLowerCase();
+  return (
+    q.includes('hour') ||
+    q.includes('time') ||
+    q.includes('expense') ||
+    q.includes('cost') ||
+    q.includes('location') ||
+    q.includes('job') ||
+    q.includes('site') ||
+    q.includes('chart') ||
+    q.includes('graph')
+  );
+}
+
+function isFollowUpQuestion(question: string): boolean {
+  const q = question.toLowerCase();
+
+  const directFollowUpPhrases = [
+    'now show',
+    'show that',
+    'break that down',
+    'what about',
+    'same for',
+    'same period',
+    'same range',
+    'that by',
+    'those by',
+    'and by',
+  ];
+
+  if (directFollowUpPhrases.some((phrase) => q.includes(phrase))) {
+    return true;
+  }
+
+  return /\b(that|those|it|them|their|same|now)\b/i.test(question);
+}
+
+function extractPriorConversationContext(recentAssistantMessages: Array<{ metadata?: Record<string, unknown> }>): PriorConversationContext {
+  for (const message of recentAssistantMessages) {
+    const metadata = message.metadata || {};
+    const intent = String(metadata.intent || '');
+
+    if (intent === 'clarification_needed') {
+      continue;
+    }
+
+    const parsedIntent = (
+      intent === 'hours_summary' ||
+      intent === 'locations_summary' ||
+      intent === 'locations_chart' ||
+      intent === 'expenses_count' ||
+      intent === 'expenses_total' ||
+      intent === 'expenses_by_job'
+    )
+      ? (intent as AskIntent)
+      : undefined;
+
+    return {
+      intent: parsedIntent,
+      subject: typeof metadata.subject === 'string' ? metadata.subject : undefined,
+      targetUserId: typeof metadata.targetUserId === 'string' ? metadata.targetUserId : null,
+      startDate: typeof metadata.startDate === 'string' ? metadata.startDate : undefined,
+      endDate: typeof metadata.endDate === 'string' ? metadata.endDate : undefined,
+      rangeLabel: typeof metadata.rangeLabel === 'string' ? metadata.rangeLabel : undefined,
+    };
+  }
+
+  return {};
+}
+
 function aggregateHoursByLocation(entries: TimeEntryRow[]): LocationHours[] {
   const map = new Map<string, number>();
 
@@ -281,7 +377,11 @@ function aggregateHoursByLocation(entries: TimeEntryRow[]): LocationHours[] {
 
 function parseReferenceToPreviousPerson(question: string): boolean {
   const q = question.toLowerCase();
-  return q.includes('that person') || q.includes('that employee') || q.includes('them') || q.includes('their');
+  return (
+    q.includes('that person') ||
+    q.includes('that employee') ||
+    /\b(that|them|their)\b/i.test(question)
+  );
 }
 
 function asksForAllPeople(question: string): boolean {
@@ -690,8 +790,79 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { startDate, endDate, label } = getDateRangeFromQuestion(question);
-    const intent = detectIntent(question);
+    const intentFromQuestion = detectIntent(question);
+    const explicitDateRange = hasExplicitDateRange(question);
+    const followUpQuestion = isFollowUpQuestion(question);
+
+    const { data: recentAssistantMessages } = await serviceClient
+      .from('ai_chat_messages')
+      .select('metadata')
+      .eq('session_id', sessionId)
+      .eq('role', 'assistant')
+      .order('created_at', { ascending: false })
+      .limit(10);
+
+    const priorContext = extractPriorConversationContext((recentAssistantMessages || []) as Array<{ metadata?: Record<string, unknown> }>);
+
+    const intent = (!hasIntentSignals(question) && followUpQuestion && priorContext.intent)
+      ? priorContext.intent
+      : intentFromQuestion;
+
+    let { startDate, endDate, label } = getDateRangeFromQuestion(question);
+    const hasPriorRange = Boolean(priorContext.startDate && priorContext.endDate);
+    const canReusePriorRange = !explicitDateRange && followUpQuestion && hasPriorRange;
+
+    if (canReusePriorRange) {
+      startDate = String(priorContext.startDate);
+      endDate = String(priorContext.endDate);
+      label = priorContext.rangeLabel || 'previous range';
+    }
+
+    if (!explicitDateRange && !canReusePriorRange) {
+      const clarificationMessage = 'Before I run that, do you mean this week or last 7 days?';
+
+      const clarificationInsert = await serviceClient
+        .from('ai_chat_messages')
+        .insert({
+          session_id: sessionId,
+          user_id: user.id,
+          role: 'assistant',
+          content: clarificationMessage,
+          metadata: {
+            intent: 'clarification_needed',
+            reason: 'missing_date_range',
+            options: ['this week', 'last 7 days'],
+          },
+        })
+        .select('id, content, metadata')
+        .single();
+
+      if (clarificationInsert.error || !clarificationInsert.data) {
+        return new Response(JSON.stringify({ error: 'Failed to persist clarification response' }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      await serviceClient
+        .from('ai_chat_sessions')
+        .update({ updated_at: new Date().toISOString() })
+        .eq('id', sessionId)
+        .eq('user_id', user.id);
+
+      return new Response(
+        JSON.stringify({
+          sessionId,
+          answer: clarificationInsert.data.content,
+          metadata: clarificationInsert.data.metadata,
+          messageId: clarificationInsert.data.id,
+        }),
+        {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
+    }
 
     const isPrivileged = currentProfile.role === 'admin' || currentProfile.role === 'supervisor';
 
@@ -762,23 +933,20 @@ Deno.serve(async (req) => {
           targetProfile = nameResolution.match;
         } else if (asksForAllPeople(question)) {
           targetProfile = null;
-        } else if (parseReferenceToPreviousPerson(question) && sessionId) {
-          const { data: recentMessages } = await serviceClient
-            .from('ai_chat_messages')
-            .select('metadata')
-            .eq('session_id', sessionId)
-            .eq('role', 'assistant')
-            .order('created_at', { ascending: false })
-            .limit(10);
+        } else if (parseReferenceToPreviousPerson(question) || followUpQuestion) {
+          const fromTargetUserId = priorContext.targetUserId
+            ? (profiles as ProfileRow[]).find((p) => p.id === priorContext.targetUserId)
+            : null;
 
-          const previousSubject = (recentMessages || [])
-            .map((m: any) => m?.metadata?.subject)
-            .find((subject: unknown) => typeof subject === 'string' && subject.length > 0) as string | undefined;
+          if (fromTargetUserId) {
+            targetProfile = fromTargetUserId;
+          } else if (priorContext.subject) {
+            const fromHistorySubject = (profiles as ProfileRow[]).find(
+              (p) => (p.full_name || '').toLowerCase() === priorContext.subject?.toLowerCase()
+            );
 
-          if (previousSubject) {
-            const fromHistory = (profiles as ProfileRow[]).find((p) => (p.full_name || '').toLowerCase() === previousSubject.toLowerCase());
-            if (fromHistory) {
-              targetProfile = fromHistory;
+            if (fromHistorySubject) {
+              targetProfile = fromHistorySubject;
             }
           }
         }
@@ -815,6 +983,7 @@ Deno.serve(async (req) => {
     let metadata: Record<string, unknown> = {
       intent,
       subject: subjectLabel,
+      targetUserId: targetProfile?.id || null,
       startDate,
       endDate,
       rangeLabel: label,
