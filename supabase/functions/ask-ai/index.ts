@@ -483,6 +483,18 @@ function hasExplicitDateRange(question: string): boolean {
   );
 }
 
+function hasPaymentStatusFilter(question: string): boolean {
+  const q = question.toLowerCase();
+  return (
+    q.includes('marked as') ||
+    q.includes('unpaid') ||
+    q.includes('outstanding') ||
+    q.includes('partial') ||
+    q.includes('open') ||
+    (q.includes('paid') && (q.includes('marked') || q.includes('status')))
+  );
+}
+
 function hasIntentSignals(question: string): boolean {
   const q = question.toLowerCase();
   return (
@@ -633,6 +645,11 @@ function extractPaymentStatusFromQuestion(question: string): 'paid' | 'partial' 
   // Check for partial payment
   if (q.includes('partial') || q.includes('partially paid')) {
     return 'partial';
+  }
+  
+  // Check for paid - including 'marked as paid'
+  if (q.includes('marked as paid') || q.includes('marked paid')) {
+    return 'paid';
   }
   
   // Check for paid (but not in contexts like 'amount paid')
@@ -1156,14 +1173,22 @@ Deno.serve(async (req) => {
     let { startDate, endDate, label } = getDateRangeFromQuestion(question);
     const hasPriorRange = Boolean(priorContext.startDate && priorContext.endDate);
     const canReusePriorRange = !explicitDateRange && followUpQuestion && hasPriorRange;
+    const hasStatusFilter = intent.startsWith('invoice') && hasPaymentStatusFilter(question);
 
     if (canReusePriorRange) {
       startDate = String(priorContext.startDate);
       endDate = String(priorContext.endDate);
       label = priorContext.rangeLabel || 'previous range';
+    } else if (!explicitDateRange && hasStatusFilter) {
+      // For payment status queries without dates, use current year as default
+      const now = new Date();
+      startDate = `${now.getFullYear()}-01-01`;
+      endDate = toDateString(now);
+      label = 'this year';
     }
 
-    if (!explicitDateRange && !canReusePriorRange) {
+    // If asking about invoice payment status without date range, default to 'all time' instead of asking
+    if (!explicitDateRange && !canReusePriorRange && !hasStatusFilter) {
       const clarificationMessage = 'Before I run that, do you mean this week or last 7 days?';
 
       const clarificationInsert = await serviceClient
@@ -1372,11 +1397,11 @@ Deno.serve(async (req) => {
         .gte('created_at', `${startDate}T00:00:00.000Z`)
         .lte('created_at', `${endDate}T23:59:59.999Z`);
       
-      const knownLocations = Array.from(
+      const knownLocations: string[] = Array.from(
         new Set(
           (allInvoices || [])
             .map((inv: any) => inv.location as string | null)
-            .filter((loc): loc is string => Boolean(loc))
+            .filter((loc: string | null): loc is string => Boolean(loc))
         )
       ).sort();
       invoiceLocation = findLocationInQuestion(question, knownLocations);
