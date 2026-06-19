@@ -64,6 +64,11 @@ interface SavedInvoice {
   id: string;
   invoice_number: string | null;
   location: string | null;
+  estimate_worksheet_id: string | null;
+  start_date: string;
+  end_date: string;
+  labor_markup_percent: number;
+  expense_markup_percent: number;
   grand_total: number;
   amount_paid: number;
   payment_status: 'unpaid' | 'partial' | 'paid';
@@ -327,7 +332,7 @@ export function CreateInvoicePage() {
     try {
       let query = supabase
         .from('invoices')
-        .select('id, invoice_number, location, grand_total, amount_paid, payment_status, status, created_at')
+        .select('id, invoice_number, location, estimate_worksheet_id, start_date, end_date, labor_markup_percent, expense_markup_percent, grand_total, amount_paid, payment_status, status, created_at')
         .eq('status', 'finalized')
         .order('created_at', { ascending: false })
         .limit(200);
@@ -891,6 +896,21 @@ export function CreateInvoicePage() {
   const fetchTimeEntries = async () => {
     if (!selectedLocation || !startDate || !endDate) return;
     try {
+      await fetchTimeEntriesForRange(selectedLocation, startDate, endDate);
+    } catch (error) {
+      console.error('Error fetching time entries:', error);
+      alert('Failed to fetch time entries');
+    }
+  };
+
+  const fetchTimeEntriesForRange = async (location: string, start: string, end: string) => {
+    if (!location || !start || !end) {
+      setTimeEntries([]);
+      setStandaloneExpenses([]);
+      return;
+    }
+
+    try {
       const { data, error } = await supabase
         .from('time_entries')
         .select(`
@@ -908,9 +928,9 @@ export function CreateInvoicePage() {
             full_name
           )
         `)
-        .eq('location', selectedLocation)
-        .gte('date', startDate)
-        .lte('date', endDate)
+        .eq('location', location)
+        .gte('date', start)
+        .lte('date', end)
         .order('date', { ascending: true });
 
       if (error) throw error;
@@ -987,9 +1007,9 @@ export function CreateInvoicePage() {
             )
           `)
           .is('time_entry_id', null)
-          .eq('location', selectedLocation)
-          .gte('date', startDate)
-          .lte('date', endDate)
+          .eq('location', location)
+          .gte('date', start)
+          .lte('date', end)
           .order('date', { ascending: true });
         
         expensesData = result.data;
@@ -1001,9 +1021,9 @@ export function CreateInvoicePage() {
           .from('expenses')
           .select('id, date, amount, description, location, receipt_url, retailer_id')
           .is('time_entry_id', null)
-          .eq('location', selectedLocation)
-          .gte('date', startDate)
-          .lte('date', endDate)
+          .eq('location', location)
+          .gte('date', start)
+          .lte('date', end)
           .order('date', { ascending: true });
         
         expensesData = result.data;
@@ -1023,8 +1043,141 @@ export function CreateInvoicePage() {
         setStandaloneExpenses(transformedExpenses);
       }
     } catch (error) {
-      console.error('Error fetching time entries:', error);
-      alert('Failed to fetch time entries');
+      throw error;
+    }
+  };
+
+  const loadEstimateMetadata = async (estimateId: string) => {
+    if (!estimateId) {
+      setEstimateSearchTerm('');
+      setEstimateContractTotalProposed(0);
+      setEstimateOverheadPercent(0);
+      return;
+    }
+
+    try {
+      const existingEstimate = estimateWorksheets.find((estimate) => estimate.id === estimateId);
+      if (existingEstimate) {
+        setEstimateSearchTerm(existingEstimate.job_name);
+        setEstimateContractTotalProposed(Number(existingEstimate.total) || 0);
+        setEstimateOverheadPercent(Number(existingEstimate.overhead_percentage) || 0);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('estimate_worksheets')
+        .select('id, job_name, total, overhead_percentage')
+        .eq('id', estimateId)
+        .single();
+
+      if (error) throw error;
+
+      setEstimateSearchTerm(data?.job_name || '');
+      setEstimateContractTotalProposed(Number(data?.total) || 0);
+      setEstimateOverheadPercent(Number(data?.overhead_percentage) || 0);
+    } catch (error) {
+      console.error('Error loading estimate metadata:', error);
+      setEstimateSearchTerm('');
+      setEstimateContractTotalProposed(0);
+      setEstimateOverheadPercent(0);
+    }
+  };
+
+  const loadInvoiceEstimateRows = async (invoiceId: string, estimateId: string) => {
+    if (!invoiceId || !estimateId) {
+      setEstimateProgressRows([]);
+      setProgressPercentInputs({});
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('invoice_estimate_lines')
+        .select('source_item_id, source_item_label, source_value, prior_cumulative_percent, current_cumulative_percent, delta_percent, billed_amount, warning_over_100')
+        .eq('invoice_id', invoiceId)
+        .eq('estimate_worksheet_id', estimateId)
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+
+      const rows: EstimateProgressRow[] = (data || []).map((row: any, index: number) => ({
+        id: `${invoiceId}-${row.source_item_id || index}`,
+        sourceItemId: String(row.source_item_id || `item-${index + 1}`),
+        item: String(row.source_item_label || `Estimate Line ${index + 1}`),
+        sourceValue: Number(row.source_value) || 0,
+        priorCumulativePercent: Number(row.prior_cumulative_percent) || 0,
+        currentCumulativePercent: Number(row.current_cumulative_percent) || 0,
+        deltaPercent: Number(row.delta_percent) || 0,
+        billedAmount: Number(row.billed_amount) || 0,
+        isOverBilledWarning: Boolean(row.warning_over_100),
+      }));
+
+      setEstimateProgressRows(rows);
+      setProgressPercentInputs({});
+    } catch (error) {
+      console.error('Error loading invoice estimate rows:', error);
+      setEstimateProgressRows([]);
+      setProgressPercentInputs({});
+    }
+  };
+
+  const loadInvoiceFromVault = async (invoiceId: string) => {
+    setSelectedVaultInvoiceId(invoiceId);
+
+    if (!invoiceId) {
+      setPaymentAmountInput('');
+      return;
+    }
+
+    const selected = invoiceVault.find((invoice) => invoice.id === invoiceId);
+    if (!selected) {
+      setPaymentAmountInput('');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const location = selected.location || '';
+      const estimateId = selected.estimate_worksheet_id || '';
+      const laborMarkup = Number(selected.labor_markup_percent) || 0;
+      const expenseMarkup = Number(selected.expense_markup_percent) || 0;
+      const amountPaid = Number(selected.amount_paid) || 0;
+      const remaining = Math.max(0, Number(selected.grand_total || 0) - amountPaid);
+
+      setSelectedLocation(location);
+      setStartDate(selected.start_date);
+      setEndDate(selected.end_date);
+      setDatePreset('custom');
+      setLaborMarkupPercent(laborMarkup);
+      setExpenseMarkupPercent(expenseMarkup);
+      setInvoiceAmountPaidInput(amountPaid.toFixed(2));
+      setSelectedEstimateId(estimateId);
+      setEnableRateOverrides(false);
+      setRateOverrides({});
+      setPaymentAmountInput(remaining > 0 ? remaining.toFixed(2) : '');
+
+      if (location) {
+        await fetchTimeEntriesForRange(location, selected.start_date, selected.end_date);
+      } else {
+        setTimeEntries([]);
+        setStandaloneExpenses([]);
+      }
+
+      if (estimateId) {
+        await loadEstimateMetadata(estimateId);
+        await loadInvoiceEstimateRows(selected.id, estimateId);
+      } else {
+        setEstimateSearchTerm('');
+        setEstimateProgressRows([]);
+        setEstimateContractTotalProposed(0);
+        setEstimateOverheadPercent(0);
+        setProgressPercentInputs({});
+      }
+    } catch (error) {
+      console.error('Error loading invoice from vault:', error);
+      alert('Failed to load full invoice details.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -1695,15 +1848,7 @@ export function CreateInvoicePage() {
             <select
               value={selectedVaultInvoiceId}
               onChange={(e) => {
-                const nextId = e.target.value;
-                setSelectedVaultInvoiceId(nextId);
-                const selected = invoiceVault.find((invoice) => invoice.id === nextId);
-                if (selected) {
-                  const remaining = Math.max(0, selected.grand_total - selected.amount_paid);
-                  setPaymentAmountInput(remaining > 0 ? remaining.toFixed(2) : '');
-                } else {
-                  setPaymentAmountInput('');
-                }
+                void loadInvoiceFromVault(e.target.value);
               }}
               className="md:col-span-2 w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
             >
