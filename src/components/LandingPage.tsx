@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Menu,
   X,
@@ -11,6 +11,7 @@ import {
   CheckCircle,
   type LucideIcon,
 } from 'lucide-react';
+import { useForm, ValidationError } from '@formspree/react';
 import { AuthForm } from './AuthForm';
 
 interface LandingPageProps {
@@ -108,12 +109,18 @@ export function LandingPage({ isAuthenticated = false }: LandingPageProps) {
     setIsMenuOpen(false);
   };
 
-  const handleContactSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    alert('Thank you for reaching out to Rygrove. We will be in touch shortly.');
-    setContactEmail('');
-    setContactMessage('');
+  const [contactFormState, submitContactForm] = useForm('xaewnzao');
+
+  const handleContactSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    submitContactForm(e);
   };
+
+  useEffect(() => {
+    if (contactFormState.succeeded) {
+      setContactEmail('');
+      setContactMessage('');
+    }
+  }, [contactFormState.succeeded]);
 
   if (showAuthForm) {
     return (
@@ -369,44 +376,70 @@ export function LandingPage({ isAuthenticated = false }: LandingPageProps) {
               Tell us what you are planning and we will reach out to discuss scope, timeline, and next steps.
             </p>
 
-            <form onSubmit={handleContactSubmit} className="bg-white rounded-lg p-8 shadow-xl">
-              <div className="mb-6">
-                <label className="block text-gray-700 font-semibold mb-2">
-                  Email Address
-                </label>
-                <input
-                  type="email"
-                  value={contactEmail}
-                  onChange={(e) => setContactEmail(e.target.value)}
-                  required
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-600 text-gray-900"
-                  placeholder="your@email.com"
-                />
+            {contactFormState.succeeded ? (
+              <div className="bg-white rounded-lg p-8 shadow-xl text-center">
+                <h3 className="text-2xl font-bold text-gray-900 mb-2">Thank you!</h3>
+                <p className="text-gray-600">
+                  We have received your request and will be in touch shortly.
+                </p>
               </div>
+            ) : (
+              <form onSubmit={handleContactSubmit} className="bg-white rounded-lg p-8 shadow-xl">
+                <div className="mb-6">
+                  <label htmlFor="contact-email" className="block text-gray-700 font-semibold mb-2">
+                    Email Address
+                  </label>
+                  <input
+                    id="contact-email"
+                    type="email"
+                    name="email"
+                    value={contactEmail}
+                    onChange={(e) => setContactEmail(e.target.value)}
+                    required
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-600 text-gray-900"
+                    placeholder="your@email.com"
+                  />
+                  <ValidationError
+                    prefix="Email"
+                    field="email"
+                    errors={contactFormState.errors}
+                    className="text-red-600 text-sm mt-2"
+                  />
+                </div>
 
-              <div className="mb-6">
-                <label className="block text-gray-700 font-semibold mb-2">
-                  Tell us about your project (optional)
-                </label>
-                <textarea
-                  value={contactMessage}
-                  onChange={(e) => setContactMessage(e.target.value)}
-                  rows={4}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-600 text-gray-900"
-                  placeholder="Property type, project goals, location, and timing"
-                />
-              </div>
+                <div className="mb-6">
+                  <label htmlFor="contact-message" className="block text-gray-700 font-semibold mb-2">
+                    Tell us about your project (optional)
+                  </label>
+                  <textarea
+                    id="contact-message"
+                    name="message"
+                    value={contactMessage}
+                    onChange={(e) => setContactMessage(e.target.value)}
+                    rows={4}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-600 text-gray-900"
+                    placeholder="Property type, project goals, location, and timing"
+                  />
+                  <ValidationError
+                    prefix="Message"
+                    field="message"
+                    errors={contactFormState.errors}
+                    className="text-red-600 text-sm mt-2"
+                  />
+                </div>
 
-              <button
-                type="submit"
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition transform hover:-translate-y-0.5"
-              >
-                Request a Consultation
-              </button>
-              <p className="text-center text-gray-600 text-sm mt-4">
-                We aim to respond within 24 hours.
-              </p>
-            </form>
+                <button
+                  type="submit"
+                  disabled={contactFormState.submitting}
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition transform hover:-translate-y-0.5 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:translate-y-0"
+                >
+                  {contactFormState.submitting ? 'Sending...' : 'Request a Consultation'}
+                </button>
+                <p className="text-center text-gray-600 text-sm mt-4">
+                  We aim to respond within 24 hours.
+                </p>
+              </form>
+            )}
           </div>
         </div>
       </section>
