@@ -156,15 +156,9 @@ export function LandingPage({ isAuthenticated = false }: LandingPageProps) {
           </p>
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <button
-              onClick={handleLoginClick}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-8 rounded-lg transition transform hover:-translate-y-0.5 shadow-lg hover:shadow-xl"
-            >
-              Employee Log In
-            </button>
             <a
               href="#contact"
-              className="bg-white border-2 border-blue-600 text-blue-700 hover:bg-blue-50 font-semibold py-3 px-8 rounded-lg transition"
+              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-8 rounded-lg transition transform hover:-translate-y-0.5 shadow-lg hover:shadow-xl"
             >
               Request Consultation
             </a>
@@ -304,12 +298,6 @@ export function LandingPage({ isAuthenticated = false }: LandingPageProps) {
             <a href="#features" className="text-gray-700 hover:text-blue-600 transition">Services</a>
             <a href="#benefits" className="text-gray-700 hover:text-blue-600 transition">Why Rygrove</a>
             <a href="#contact" className="text-gray-700 hover:text-blue-600 transition">Contact</a>
-            <button
-              onClick={handleLoginClick}
-              className="text-gray-700 hover:text-blue-600 transition font-medium"
-            >
-              Employee Log In
-            </button>
           </nav>
 
           <button
@@ -350,14 +338,6 @@ export function LandingPage({ isAuthenticated = false }: LandingPageProps) {
                 >
                   Contact
                 </a>
-              </li>
-              <li className="border-t border-gray-200 pt-3">
-                <button
-                  onClick={handleLoginClick}
-                  className="w-full text-left px-4 py-2 text-blue-600 hover:bg-blue-50 rounded-lg transition font-medium"
-                >
-                  Employee Log In
-                </button>
               </li>
             </ul>
           </nav>
