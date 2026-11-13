@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { format, parseISO, addDays, addWeeks, subWeeks, startOfWeek, endOfWeek, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isBefore, isAfter, isValid } from 'date-fns';
 import { supabase } from '../lib/supabase';
 import { parsePlannerDate as utilParsePlannerDate, normalizeDateInput as utilNormalizeDateInput, isSameDayCompat, createMemoizedDateParser } from '../lib/dateUtils';
-import { Plus, FolderKanban, AlertCircle, ChevronDown, ChevronRight as ChevronRightIcon, Trash2, X, StickyNote, GripVertical, ChevronUp, Calendar as CalendarIcon } from 'lucide-react';
+import { Plus, FolderKanban, AlertCircle, ChevronDown, ChevronRight as ChevronRightIcon, Trash2, X, StickyNote, GripVertical, ChevronUp, ArrowDownWideNarrow, Calendar as CalendarIcon } from 'lucide-react';
 
 interface PlannerProject {
   id: string;
@@ -784,6 +784,44 @@ export default function PlannerPage() {
     setTaskDropTarget(null);
   };
 
+  // Auto sort: order a category's tasks by start date, then end date, then name,
+  // so the timeline bars cascade cleanly. Saved like a manual reorder.
+  const autoSortCategory = async (categoryId: string) => {
+    const time = (value: string) => parsePlannerDate(value)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+    const sorted = tasks
+      .filter(t => t.category_id === categoryId)
+      .sort((a, b) =>
+        time(a.start_date) - time(b.start_date) ||
+        time(a.end_date) - time(b.end_date) ||
+        a.name.localeCompare(b.name)
+      );
+
+    const changed = sorted
+      .map((t, idx) => ({ id: t.id, sort_order: idx, previous: t.sort_order }))
+      .filter(u => u.previous !== u.sort_order);
+    if (changed.length === 0) return;
+
+    const previousTasks = tasks;
+    const orderById = new Map(sorted.map((t, idx) => [t.id, idx]));
+    setTasks(prev =>
+      prev
+        .map(t => (orderById.has(t.id) ? { ...t, sort_order: orderById.get(t.id)! } : t))
+        .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+    );
+
+    const results = await Promise.all(
+      changed.map(u =>
+        supabase.from('planner_tasks').update({ sort_order: u.sort_order, updated_by: currentUser }).eq('id', u.id)
+      )
+    );
+    const failed = results.find(r => r.error);
+    if (failed) {
+      console.error('Error auto-sorting tasks:', failed.error);
+      setTasks(previousTasks);
+      alert('Could not save the sorted order. Please try again.');
+    }
+  };
+
   const nudgeTask = (task: PlannerTask, direction: -1 | 1) => {
     const list = tasks.filter(t => t.category_id === task.category_id);
     const currentIndex = list.findIndex(t => t.id === task.id);
@@ -1152,8 +1190,20 @@ export default function PlannerPage() {
                         ) : (
                           <ChevronDown size={16} className="mr-2" />
                         )}
-                        {group.category.name}
+                        <span className="truncate">{group.category.name}</span>
                         <span className="ml-2 text-xs text-gray-500">({group.tasks.length})</span>
+                        {isAdmin && group.tasks.length > 1 && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              autoSortCategory(group.category.id);
+                            }}
+                            className="ml-auto p-1 rounded text-gray-500 hover:text-gray-800 hover:bg-white/70 transition-colors"
+                            title="Auto sort by start date"
+                          >
+                            <ArrowDownWideNarrow size={14} />
+                          </button>
+                        )}
                       </div>
 
                       {/* Tasks in Category */}
