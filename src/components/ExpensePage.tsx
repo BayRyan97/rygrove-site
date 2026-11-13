@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { DollarSign, Store, Upload, MapPin, ChevronDown, Plus, X } from 'lucide-react';
+import { DollarSign, Store, Upload, MapPin, ChevronDown, Plus, X, ListChecks } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { format } from 'date-fns';
 
@@ -45,6 +45,12 @@ interface Expense {
   retailer_id?: string | null;
   retailer_name?: string;
   user_id?: string;
+  planner_task_id?: string | null;
+}
+
+interface PlannerTaskOption {
+  id: string;
+  label: string;
 }
 
 interface Retailer {
@@ -61,6 +67,8 @@ export function ExpensePage() {
     retailer_name: ''
   }]);
   const [locations, setLocations] = useState<string[]>([]);
+  // Planner tasks available for each job location (via projects linked to that location)
+  const [tasksByLocation, setTasksByLocation] = useState<Record<string, PlannerTaskOption[]>>({});
   const [retailers, setRetailers] = useState<Retailer[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showLocationDropdown, setShowLocationDropdown] = useState<number | null>(null);
@@ -71,6 +79,7 @@ export function ExpensePage() {
 
   useEffect(() => {
     fetchLocations();
+    fetchPlannerTasks();
     fetchRetailers();
     fetchCurrentUser();
 
@@ -146,6 +155,60 @@ export function ExpensePage() {
     } catch (error) {
       console.error('Error fetching locations:', error);
     }
+  };
+
+  const fetchPlannerTasks = async () => {
+    try {
+      const [{ data: links, error: linkError }, { data: categories, error: categoryError }, { data: tasks, error: taskError }, { data: projects, error: projectError }] = await Promise.all([
+        supabase.from('planner_project_locations').select('project_id, location'),
+        supabase.from('planner_categories').select('id, name, project_id, sort_order'),
+        supabase.from('planner_tasks').select('id, name, category_id, sort_order, completed_date'),
+        supabase.from('planner_projects').select('id, name')
+      ]);
+      if (linkError || categoryError || taskError || projectError) {
+        throw linkError || categoryError || taskError || projectError;
+      }
+
+      const projectNames = new Map((projects || []).map(p => [p.id, p.name as string]));
+      const projectCount = new Set((links || []).map(l => l.project_id)).size;
+      const categoryById = new Map((categories || []).map(c => [c.id, c]));
+
+      const result: Record<string, PlannerTaskOption[]> = {};
+      (links || []).forEach(link => {
+        const options = (tasks || [])
+          .filter(t => !t.completed_date && categoryById.get(t.category_id)?.project_id === link.project_id)
+          .sort((a, b) => {
+            const ca = categoryById.get(a.category_id)?.sort_order ?? 0;
+            const cb = categoryById.get(b.category_id)?.sort_order ?? 0;
+            return ca - cb || (a.sort_order ?? 0) - (b.sort_order ?? 0);
+          })
+          .map(t => {
+            const category = categoryById.get(t.category_id)?.name;
+            // Only mention the project when several projects share locations
+            const project = projectCount > 1 ? projectNames.get(link.project_id) : null;
+            return {
+              id: t.id,
+              label: [project, category, t.name].filter(Boolean).join(' › ')
+            };
+          });
+        result[link.location] = [...(result[link.location] || []), ...options];
+      });
+      setTasksByLocation(result);
+    } catch (error) {
+      // Task tagging is optional; the form still works without it
+      console.error('Error fetching planner tasks for expenses:', error);
+    }
+  };
+
+  const setExpenseLocation = (index: number, location: string) => {
+    const newExpenses = [...expenses];
+    newExpenses[index].location = location;
+    // Drop a task tag that doesn't belong to the new location
+    const options = tasksByLocation[location] || [];
+    if (newExpenses[index].planner_task_id && !options.some(o => o.id === newExpenses[index].planner_task_id)) {
+      newExpenses[index].planner_task_id = null;
+    }
+    setExpenses(newExpenses);
   };
 
   const fetchRetailers = async () => {
@@ -297,6 +360,7 @@ export function ExpensePage() {
             description: expense.description,
             location: expense.location,
             retailer_id: retailerId,
+            planner_task_id: expense.planner_task_id || null,
             receipt_url: expense.receipt_url,
             receipt_image_url: expense.receipt_image_url
           });
@@ -462,9 +526,7 @@ export function ExpensePage() {
                     type="text"
                     value={expense.location}
                     onChange={(e) => {
-                      const newExpenses = [...expenses];
-                      newExpenses[index].location = e.target.value;
-                      setExpenses(newExpenses);
+                      setExpenseLocation(index, e.target.value);
                       setShowLocationDropdown(index);
                     }}
                     onClick={() => setShowLocationDropdown(index)}
@@ -484,9 +546,7 @@ export function ExpensePage() {
                           key={location}
                           type="button"
                           onClick={() => {
-                            const newExpenses = [...expenses];
-                            newExpenses[index].location = location;
-                            setExpenses(newExpenses);
+                            setExpenseLocation(index, location);
                             setShowLocationDropdown(null);
                           }}
                           className="w-full px-4 py-2 text-left hover:bg-gray-50"
@@ -498,6 +558,31 @@ export function ExpensePage() {
                   )}
                 </div>
               </div>
+
+              {(tasksByLocation[expense.location] || []).length > 0 && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Planner Task <span className="text-gray-400 font-normal">(optional)</span>
+                  </label>
+                  <div className="relative">
+                    <ListChecks className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
+                    <select
+                      value={expense.planner_task_id || ''}
+                      onChange={(e) => {
+                        const newExpenses = [...expenses];
+                        newExpenses[index].planner_task_id = e.target.value || null;
+                        setExpenses(newExpenses);
+                      }}
+                      className="w-full pl-8 pr-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
+                    >
+                      <option value="">No specific task</option>
+                      {tasksByLocation[expense.location].map(task => (
+                        <option key={task.id} value={task.id}>{task.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )}
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Retailer</label>
