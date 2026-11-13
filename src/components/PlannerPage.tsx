@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { format, parseISO, addDays, addWeeks, subWeeks, startOfWeek, endOfWeek, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isBefore, isAfter, isValid } from 'date-fns';
 import { supabase } from '../lib/supabase';
 import { parsePlannerDate as utilParsePlannerDate, normalizeDateInput as utilNormalizeDateInput, isSameDayCompat, createMemoizedDateParser } from '../lib/dateUtils';
-import { Plus, FolderKanban, AlertCircle, ChevronDown, ChevronRight as ChevronRightIcon, Trash2, X, StickyNote, Calendar as CalendarIcon } from 'lucide-react';
+import { Plus, FolderKanban, AlertCircle, ChevronDown, ChevronRight as ChevronRightIcon, Trash2, X, StickyNote, GripVertical, ChevronUp, Calendar as CalendarIcon } from 'lucide-react';
 
 interface PlannerProject {
   id: string;
@@ -30,6 +30,7 @@ interface PlannerTask {
   start_date: string;
   end_date: string;
   completed_date: string | null;
+  sort_order: number;
 }
 
 interface PlannerNote {
@@ -84,50 +85,42 @@ export default function PlannerPage() {
     return memoizedDateParser(value);
   };
 
-  // Calculate timeline from project dates with padding
+  // Calculate timeline from project dates AND task dates, with padding,
+  // so tasks that run past the project's end (or start before it) stay reachable.
   const { viewportStart, viewportEnd } = useMemo(() => {
     const selectedProject = projects.find(p => p.id === selectedProjectId);
-    
-    if (selectedProject?.start_date && selectedProject?.end_date) {
-      // Use project dates with 1 week padding on each side
-      const projectStart = parsePlannerDate(selectedProject.start_date);
-      const projectEnd = parsePlannerDate(selectedProject.end_date);
 
-      console.log('Safari Debug - Project dates:', {
-        start_date: selectedProject.start_date,
-        end_date: selectedProject.end_date,
-        projectStart,
-        projectEnd,
-        isProjectStartValid: projectStart && isValid(projectStart),
-        isProjectEndValid: projectEnd && isValid(projectEnd)
-      });
+    let rangeStart: Date | null = null;
+    let rangeEnd: Date | null = null;
+    const extend = (start: Date | null, end: Date | null) => {
+      if (start && isValid(start) && (!rangeStart || isBefore(start, rangeStart))) rangeStart = start;
+      if (end && isValid(end) && (!rangeEnd || isAfter(end, rangeEnd))) rangeEnd = end;
+    };
 
-      if (!projectStart || !projectEnd || !isValid(projectStart) || !isValid(projectEnd) || isAfter(projectStart, projectEnd)) {
-        console.log('Safari Debug - Using fallback (invalid dates)');
-        const today = new Date();
-        return {
-          viewportStart: startOfMonth(today),
-          viewportEnd: endOfMonth(today)
-        };
-      }
-      
-      const viewport = {
-        viewportStart: subWeeks(startOfWeek(projectStart), 1),
-        viewportEnd: addWeeks(endOfWeek(projectEnd), 1)
-      };
-      
-      console.log('Safari Debug - Calculated viewport:', viewport);
-      return viewport;
+    const projectStart = parsePlannerDate(selectedProject?.start_date);
+    const projectEnd = parsePlannerDate(selectedProject?.end_date);
+    if (projectStart && projectEnd && isValid(projectStart) && isValid(projectEnd) && !isAfter(projectStart, projectEnd)) {
+      extend(projectStart, projectEnd);
     }
-    
-    // Fallback: show current month if no project dates
-    console.log('Safari Debug - Using fallback (no project dates)');
+
+    tasks.forEach(task => {
+      extend(parsePlannerDate(task.start_date), parsePlannerDate(task.end_date));
+    });
+
+    if (rangeStart && rangeEnd && !isAfter(rangeStart, rangeEnd)) {
+      return {
+        viewportStart: subWeeks(startOfWeek(rangeStart), 1),
+        viewportEnd: addWeeks(endOfWeek(rangeEnd), 1)
+      };
+    }
+
+    // Fallback: show current month if no usable dates
     const today = new Date();
     return {
       viewportStart: startOfMonth(today),
       viewportEnd: endOfMonth(today)
     };
-  }, [selectedProjectId, projects]);
+  }, [selectedProjectId, projects, tasks]);
 
   // Modal states
   const [showProjectModal, setShowProjectModal] = useState(false);
@@ -262,6 +255,7 @@ export default function PlannerPage() {
       .from('planner_tasks')
       .select('*')
       .in('category_id', categoryIds)
+      .order('sort_order', { ascending: true })
       .order('created_at', { ascending: true });
 
     if (error) {
@@ -388,6 +382,12 @@ export default function PlannerPage() {
     await fetchCategories();
   };
 
+  // New tasks go to the bottom of their category
+  const nextSortOrder = (categoryId: string) => {
+    const orders = tasks.filter(t => t.category_id === categoryId).map(t => t.sort_order ?? 0);
+    return orders.length ? Math.max(...orders) + 1 : 0;
+  };
+
   const createTask = async () => {
     if (!taskForm.name.trim() || !taskForm.category_id) return;
 
@@ -399,6 +399,7 @@ export default function PlannerPage() {
         description: taskForm.description || null,
         start_date: taskForm.start_date,
         end_date: taskForm.end_date,
+        sort_order: nextSortOrder(taskForm.category_id),
         created_by: currentUser,
         updated_by: currentUser
       }]);
@@ -605,6 +606,7 @@ export default function PlannerPage() {
         description: promotingNote.description || null,
         start_date: promoteForm.start_date,
         end_date: promoteForm.end_date,
+        sort_order: nextSortOrder(promotingNote.category_id),
         created_by: currentUser,
         updated_by: currentUser
       }]);
@@ -684,6 +686,110 @@ export default function PlannerPage() {
         .update({ sort_order: update.sort_order })
         .eq('id', update.id);
     }
+  };
+
+  // ---- Task reordering (drag within/between categories, or up/down buttons) ----
+  const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
+  const [taskDropTarget, setTaskDropTarget] = useState<{ categoryId: string; index: number } | null>(null);
+
+  // Place a task at `targetIndex` within `targetCategoryId`, renumber, and save.
+  const moveTask = async (taskId: string, targetCategoryId: string, targetIndex: number) => {
+    const task = tasks.find(t => t.id === taskId);
+    if (!task) return;
+
+    const sourceCategoryId = task.category_id;
+    const targetList = tasks.filter(t => t.category_id === targetCategoryId && t.id !== taskId);
+    const clampedIndex = Math.max(0, Math.min(targetIndex, targetList.length));
+    const movedTask = { ...task, category_id: targetCategoryId };
+    targetList.splice(clampedIndex, 0, movedTask);
+
+    const changed = new Map<string, { sort_order: number; category_id: string }>();
+    targetList.forEach((t, idx) => {
+      const original = tasks.find(o => o.id === t.id)!;
+      if (original.sort_order !== idx || original.category_id !== targetCategoryId) {
+        changed.set(t.id, { sort_order: idx, category_id: targetCategoryId });
+      }
+    });
+    if (sourceCategoryId !== targetCategoryId) {
+      tasks
+        .filter(t => t.category_id === sourceCategoryId && t.id !== taskId)
+        .forEach((t, idx) => {
+          if (t.sort_order !== idx) changed.set(t.id, { sort_order: idx, category_id: sourceCategoryId });
+        });
+    }
+    if (changed.size === 0) return;
+
+    // Optimistic update so the list and timeline move immediately
+    const previousTasks = tasks;
+    setTasks(prev =>
+      prev
+        .map(t => (changed.has(t.id) ? { ...t, ...changed.get(t.id)! } : t))
+        .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+    );
+
+    const results = await Promise.all(
+      Array.from(changed.entries()).map(([id, update]) =>
+        supabase.from('planner_tasks').update({ ...update, updated_by: currentUser }).eq('id', id)
+      )
+    );
+    const failed = results.find(r => r.error);
+    if (failed) {
+      console.error('Error reordering tasks:', failed.error);
+      setTasks(previousTasks);
+      alert('Could not save the new task order. Please try again.');
+    }
+  };
+
+  const handleTaskDragStart = (e: React.DragEvent, taskId: string) => {
+    e.stopPropagation();
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', taskId);
+    setDraggedTaskId(taskId);
+  };
+
+  const handleTaskDragOver = (e: React.DragEvent, categoryId: string, index: number) => {
+    if (!draggedTaskId) return;
+    e.preventDefault();
+    e.stopPropagation();
+    // Drop above or below the hovered row depending on cursor position
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const dropIndex = e.clientY > rect.top + rect.height / 2 ? index + 1 : index;
+    if (!taskDropTarget || taskDropTarget.categoryId !== categoryId || taskDropTarget.index !== dropIndex) {
+      setTaskDropTarget({ categoryId, index: dropIndex });
+    }
+  };
+
+  const handleTaskDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const taskId = draggedTaskId;
+    const target = taskDropTarget;
+    setDraggedTaskId(null);
+    setTaskDropTarget(null);
+    if (!taskId || !target) return;
+
+    const task = tasks.find(t => t.id === taskId);
+    if (!task) return;
+    let index = target.index;
+    // Removing the task from its own list shifts later positions up by one
+    if (task.category_id === target.categoryId) {
+      const currentIndex = tasks.filter(t => t.category_id === target.categoryId).findIndex(t => t.id === taskId);
+      if (currentIndex !== -1 && currentIndex < index) index -= 1;
+    }
+    await moveTask(taskId, target.categoryId, index);
+  };
+
+  const handleTaskDragEnd = () => {
+    setDraggedTaskId(null);
+    setTaskDropTarget(null);
+  };
+
+  const nudgeTask = (task: PlannerTask, direction: -1 | 1) => {
+    const list = tasks.filter(t => t.category_id === task.category_id);
+    const currentIndex = list.findIndex(t => t.id === task.id);
+    const newIndex = currentIndex + direction;
+    if (newIndex < 0 || newIndex >= list.length) return;
+    moveTask(task.id, task.category_id, newIndex);
   };
 
   const openTaskDetail = (task: PlannerTask) => {
@@ -1022,8 +1128,15 @@ export default function PlannerPage() {
                       <div 
                         draggable={isAdmin}
                         onDragStart={() => handleDragStart(groupIdx)}
-                        onDragOver={(e) => handleDragOver(e, groupIdx)}
-                        onDrop={(e) => handleDrop(e, groupIdx)}
+                        onDragOver={(e) => {
+                          if (draggedTaskId) {
+                            e.preventDefault();
+                            setTaskDropTarget({ categoryId: group.category.id, index: group.tasks.filter(t => t.id !== draggedTaskId).length });
+                            return;
+                          }
+                          handleDragOver(e, groupIdx);
+                        }}
+                        onDrop={(e) => (draggedTaskId ? handleTaskDrop(e) : handleDrop(e, groupIdx))}
                         className={`bg-gradient-to-r ${getCategoryColor(group.category.id).light} h-12 px-4 font-bold text-sm text-gray-800 flex items-center cursor-pointer transition-all duration-200 hover:shadow-md ${getCategoryColor(group.category.id).border} border-l-4 ${isAdmin ? 'cursor-move' : ''} ${draggedCategoryIndex === groupIdx ? 'opacity-50' : ''}`}
                         onClick={(e) => {
                           if (isAdmin && (e.ctrlKey || e.metaKey)) {
@@ -1050,9 +1163,30 @@ export default function PlannerPage() {
 
                         return (
                           <div
-                            key={taskIdx}
-                            className={`px-4 h-14 flex items-center gap-3 text-sm hover:bg-white/60 group transition-all duration-150 bg-gradient-to-r ${getCategoryColor(group.category.id).light} bg-opacity-30`}
+                            key={task.id}
+                            draggable={isAdmin}
+                            onDragStart={(e) => handleTaskDragStart(e, task.id)}
+                            onDragOver={(e) => handleTaskDragOver(e, group.category.id, taskIdx)}
+                            onDrop={handleTaskDrop}
+                            onDragEnd={handleTaskDragEnd}
+                            className={`relative px-4 h-14 flex items-center gap-3 text-sm hover:bg-white/60 group transition-all duration-150 bg-gradient-to-r ${getCategoryColor(group.category.id).light} bg-opacity-30 ${draggedTaskId === task.id ? 'opacity-40' : ''}`}
                           >
+                            {/* Drop indicator line */}
+                            {taskDropTarget && draggedTaskId && taskDropTarget.categoryId === group.category.id && (
+                              <>
+                                {taskDropTarget.index === taskIdx && (
+                                  <div className="absolute left-2 right-2 top-0 h-0.5 bg-blue-500 rounded-full pointer-events-none" />
+                                )}
+                                {taskIdx === group.tasks.length - 1 && taskDropTarget.index === group.tasks.length && (
+                                  <div className="absolute left-2 right-2 bottom-0 h-0.5 bg-blue-500 rounded-full pointer-events-none" />
+                                )}
+                              </>
+                            )}
+                            {isAdmin && (
+                              <span className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600 flex-shrink-0 -ml-2" title="Drag to reorder">
+                                <GripVertical size={14} />
+                              </span>
+                            )}
                             {isAdmin && (
                               <input
                                 type="checkbox"
@@ -1085,6 +1219,26 @@ export default function PlannerPage() {
                                 </div>
                               )}
                             </div>
+                            {isAdmin && (
+                              <div className="flex flex-col flex-shrink-0 opacity-60 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); nudgeTask(task, -1); }}
+                                  disabled={taskIdx === 0}
+                                  className="p-0.5 hover:bg-white rounded text-gray-600 disabled:opacity-30 disabled:cursor-default"
+                                  title="Move up"
+                                >
+                                  <ChevronUp size={14} />
+                                </button>
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); nudgeTask(task, 1); }}
+                                  disabled={taskIdx === group.tasks.length - 1}
+                                  className="p-0.5 hover:bg-white rounded text-gray-600 disabled:opacity-30 disabled:cursor-default"
+                                  title="Move down"
+                                >
+                                  <ChevronDown size={14} />
+                                </button>
+                              </div>
+                            )}
                             {isAdmin && (
                               <button
                                 onClick={(e) => {
