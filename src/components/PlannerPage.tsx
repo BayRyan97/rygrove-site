@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { format, parseISO, addDays, addWeeks, subWeeks, startOfWeek, endOfWeek, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isBefore, isAfter, isValid } from 'date-fns';
 import { supabase } from '../lib/supabase';
+import ProjectFinancials from './ProjectFinancials';
 import { parsePlannerDate as utilParsePlannerDate, normalizeDateInput as utilNormalizeDateInput, isSameDayCompat, createMemoizedDateParser } from '../lib/dateUtils';
 import { Plus, FolderKanban, AlertCircle, ChevronDown, ChevronRight as ChevronRightIcon, Trash2, X, StickyNote, GripVertical, ChevronUp, ArrowDownWideNarrow, Calendar as CalendarIcon } from 'lucide-react';
 
@@ -1064,6 +1065,11 @@ export default function PlannerPage() {
             </div>
           );
         })()}
+
+        {/* Project Costs (admins only) */}
+        {selectedProjectId && isAdmin && (
+          <ProjectFinancials projectId={selectedProjectId} currentUser={currentUser} />
+        )}
       </div>
 
       {/* Bulk Task Actions */}
