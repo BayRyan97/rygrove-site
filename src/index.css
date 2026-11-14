@@ -51,3 +51,60 @@ button:hover:not(:disabled) {
 button:active:not(:disabled) {
   @apply transform translate-y-0;
 }
+
+/* ------------------------------------------------------------------------
+   Form controls: consistent sizing on iPad/iPhone Safari.
+   iOS gives date/time inputs a built-in minimum width (they ignore w-full
+   and spill into the next column) plus a gray native look, and styles
+   <select> differently from text inputs. These rules make them behave like
+   the other inputs everywhere on the site.
+   ------------------------------------------------------------------------ */
+@layer base {
+  input[type='date'],
+  input[type='time'],
+  input[type='datetime-local'],
+  input[type='month'],
+  select:not([multiple]) {
+    background-color: #fff;
+  }
+}
+
+/* Unlayered so it applies over Tailwind utilities */
+input[type='date'],
+input[type='time'],
+input[type='datetime-local'],
+input[type='month'] {
+  -webkit-appearance: none;
+  appearance: none;
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  text-align: left;
+}
+
+input[type='date']::-webkit-date-and-time-value,
+input[type='time']::-webkit-date-and-time-value,
+input[type='datetime-local']::-webkit-date-and-time-value {
+  text-align: left;
+  margin: 0;
+  /* keeps an empty date/time box from collapsing on iOS, at any input size */
+  min-height: 1.5em;
+}
+
+select:not([multiple]) {
+  -webkit-appearance: none;
+  appearance: none;
+  max-width: 100%;
+  padding-right: 2.25rem;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%239ca3af' stroke-width='1.5'%3E%3Cpath d='M6 8l4 4 4-4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.6rem center;
+  background-size: 1.1rem;
+}
+
+/* Grid/flex children can shrink instead of pushing into their neighbors */
+.grid > *,
+.flex > input,
+.flex > select {
+  min-width: 0;
+}
