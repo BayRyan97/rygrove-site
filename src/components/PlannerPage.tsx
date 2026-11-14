@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { format, parseISO, addDays, addWeeks, subWeeks, startOfWeek, endOfWeek, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isBefore, isAfter, isValid } from 'date-fns';
 import { supabase } from '../lib/supabase';
 import ProjectFinancials from './ProjectFinancials';
+import ProjectPartnerAccess from './ProjectPartnerAccess';
 import { parsePlannerDate as utilParsePlannerDate, normalizeDateInput as utilNormalizeDateInput, isSameDayCompat, createMemoizedDateParser } from '../lib/dateUtils';
 import { Plus, FolderKanban, AlertCircle, ChevronDown, ChevronRight as ChevronRightIcon, Trash2, X, StickyNote, GripVertical, ChevronUp, ArrowDownWideNarrow, Calendar as CalendarIcon } from 'lucide-react';
 
@@ -76,6 +77,8 @@ export default function PlannerPage() {
   const [noteComments, setNoteComments] = useState<NoteComment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
+  // Partners (outside collaborators) get a read-only planner, but can comment on notes
+  const [isPartner, setIsPartner] = useState(false);
   const [currentUser, setCurrentUser] = useState<string>('');
 
   // Use memoized date parser to avoid re-parsing same date strings
@@ -198,6 +201,7 @@ export default function PlannerPage() {
         .eq('id', user.id)
         .single();
       setIsAdmin(profile?.role === 'admin');
+      setIsPartner(profile?.role === 'partner');
     }
   };
 
@@ -545,10 +549,7 @@ export default function PlannerPage() {
   const fetchNoteComments = async (noteId: string) => {
     const { data, error } = await supabase
       .from('planner_note_comments')
-      .select(`
-        *,
-        profiles!inner(full_name)
-      `)
+      .select('*')
       .eq('note_id', noteId)
       .order('created_at', { ascending: false });
 
@@ -557,9 +558,18 @@ export default function PlannerPage() {
       return;
     }
 
-    const commentsWithAuthor = (data || []).map((comment: any) => ({
+    // Names come from a names-only lookup so partners never read full profiles
+    const authorIds = Array.from(new Set((data || []).map((c: NoteComment) => c.created_by).filter(Boolean)));
+    const names = new Map<string, string>();
+    if (authorIds.length > 0) {
+      const { data: nameRows, error: nameError } = await supabase.rpc('get_profile_names', { p_ids: authorIds });
+      if (nameError) console.error('Error fetching comment authors:', nameError);
+      (nameRows || []).forEach((r: { id: string; full_name: string | null }) => names.set(r.id, r.full_name || 'Unknown'));
+    }
+
+    const commentsWithAuthor = (data || []).map((comment: NoteComment) => ({
       ...comment,
-      author_name: comment.profiles?.full_name || 'Unknown'
+      author_name: names.get(comment.created_by) || 'Unknown'
     }));
 
     setNoteComments(commentsWithAuthor);
@@ -1067,8 +1077,13 @@ export default function PlannerPage() {
         })()}
 
         {/* Project Costs (admins only) */}
+        {selectedProjectId && (isAdmin || isPartner) && (
+          <ProjectFinancials projectId={selectedProjectId} currentUser={currentUser} canManage={isAdmin} />
+        )}
+
+        {/* Partner Access (admins only) */}
         {selectedProjectId && isAdmin && (
-          <ProjectFinancials projectId={selectedProjectId} currentUser={currentUser} />
+          <ProjectPartnerAccess projectId={selectedProjectId} currentUser={currentUser} />
         )}
       </div>
 
@@ -1565,13 +1580,15 @@ export default function PlannerPage() {
               <StickyNote className="mr-2" size={24} />
               Note Board
             </h2>
-            <button
-              onClick={() => setShowNoteModal(true)}
-              className="flex items-center px-3 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 shadow-md"
-            >
-              <Plus size={16} className="mr-2" />
-              New Note
-            </button>
+            {!isPartner && (
+              <button
+                onClick={() => setShowNoteModal(true)}
+                className="flex items-center px-3 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 shadow-md"
+              >
+                <Plus size={16} className="mr-2" />
+                New Note
+              </button>
+            )}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -1593,7 +1610,7 @@ export default function PlannerPage() {
                   style={{ minHeight: '180px' }}
                 >
                   {/* Selection checkbox */}
-                  <input
+                  {!isPartner && <input
                     type="checkbox"
                     checked={selectedNoteIds.has(note.id)}
                     onChange={(e) => {
@@ -1608,10 +1625,10 @@ export default function PlannerPage() {
                     }}
                     onClick={(e) => e.stopPropagation()}
                     className="absolute top-2 left-2 w-5 h-5 rounded cursor-pointer z-10"
-                  />
+                  />}
 
                   {/* Delete button */}
-                  <button
+                  {!isPartner && <button
                     onClick={(e) => {
                       e.stopPropagation();
                       deleteNote(note.id);
@@ -1620,7 +1637,7 @@ export default function PlannerPage() {
                     title="Delete note"
                   >
                     <X size={16} />
-                  </button>
+                  </button>}
 
                   {/* Title */}
                   <h3 className="font-bold text-gray-900 mb-2 pr-6 pl-8">
@@ -2077,7 +2094,8 @@ export default function PlannerPage() {
                   type="text"
                   value={selectedNote.title}
                   onChange={(e) => setSelectedNote({ ...selectedNote, title: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  readOnly={isPartner}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 read-only:bg-gray-50"
                 />
               </div>
 
@@ -2086,7 +2104,8 @@ export default function PlannerPage() {
                 <textarea
                   value={selectedNote.description || ''}
                   onChange={(e) => setSelectedNote({ ...selectedNote, description: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  readOnly={isPartner}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 read-only:bg-gray-50"
                   rows={4}
                   placeholder="Add note description..."
                 />
@@ -2097,6 +2116,7 @@ export default function PlannerPage() {
                 <select
                   value={selectedNote.category_id || ''}
                   onChange={(e) => setSelectedNote({ ...selectedNote, category_id: e.target.value || null })}
+                  disabled={isPartner}
                   className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">No category (just a note)</option>
@@ -2153,7 +2173,7 @@ export default function PlannerPage() {
 
               {/* Action Buttons */}
               <div className="flex gap-2 pt-4 border-t">
-                <button
+                {!isPartner && <button
                   onClick={() => {
                     updateNote();
                     setShowNoteDetailModal(false);
@@ -2163,9 +2183,9 @@ export default function PlannerPage() {
                   className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
                 >
                   Save Changes
-                </button>
+                </button>}
                 
-                {selectedNote.category_id && (
+                {!isPartner && selectedNote.category_id && (
                   <button
                     onClick={() => {
                       setPromotingNote(selectedNote);
@@ -2179,14 +2199,14 @@ export default function PlannerPage() {
                   </button>
                 )}
 
-                <button
+                {!isPartner && <button
                   onClick={() => {
                     deleteNote(selectedNote.id);
                   }}
                   className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
                 >
                   Delete
-                </button>
+                </button>}
                 
                 <button
                   onClick={() => {

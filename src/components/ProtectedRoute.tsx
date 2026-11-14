@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
-  allowedRoles: ('admin' | 'supervisor' | 'employee')[];
+  allowedRoles: ('admin' | 'supervisor' | 'employee' | 'partner')[];
 }
 
 export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) {
@@ -33,7 +33,7 @@ export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) 
         .single();
 
       const userRole = profile?.role || 'employee';
-      const hasAccess = allowedRoles.includes(userRole as 'admin' | 'supervisor' | 'employee');
+      const hasAccess = allowedRoles.includes(userRole as 'admin' | 'supervisor' | 'employee' | 'partner');
       
       setIsAuthorized(hasAccess);
       

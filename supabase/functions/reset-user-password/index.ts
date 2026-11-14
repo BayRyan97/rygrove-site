@@ -61,8 +61,36 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
+    // Only signed-in admins may reset passwords. Without this check anyone
+    // holding the public anon key could reset any account and get its password.
+    const authHeader = req.headers.get('Authorization') || '';
+    const token = authHeader.replace(/^Bearer\s+/i, '');
+    const { data: { user: caller }, error: callerError } = token
+      ? await supabase.auth.getUser(token)
+      : { data: { user: null }, error: new Error('Missing token') };
+
+    if (callerError || !caller) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const { data: callerProfile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', caller.id)
+      .single();
+
+    if (callerProfile?.role !== 'admin') {
+      return new Response(
+        JSON.stringify({ error: 'Forbidden: admin only' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     // Generate a temporary password
-    const tempPassword = `Temp${Math.random().toString(36).slice(-12)}!`;
+    const tempPassword = `Temp${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}!`;
 
     // Update user password
     const { error } = await supabase.auth.admin.updateUserById(userId, {

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { DollarSign, Store, Upload, MapPin, ChevronDown, Plus, X, ListChecks } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { format } from 'date-fns';
+import { JobExpenseList } from './JobExpenseList';
 
 const downloadReceipt = async (url: string, filename?: string) => {
   try {
@@ -74,14 +75,16 @@ export function ExpensePage() {
   const [showLocationDropdown, setShowLocationDropdown] = useState<number | null>(null);
   const [showRetailerDropdown, setShowRetailerDropdown] = useState<number | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
+  // Partners (outside collaborators) only submit/see expenses for their shared jobs
+  const [isPartner, setIsPartner] = useState(false);
+  const [expenseListKey, setExpenseListKey] = useState(0);
   const locationDropdownRef = useRef<HTMLDivElement>(null);
   const retailerDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    fetchLocations();
+    fetchCurrentUser().then(partner => fetchLocations(partner));
     fetchPlannerTasks();
     fetchRetailers();
-    fetchCurrentUser();
 
     function handleClickOutside(event: MouseEvent) {
       if (locationDropdownRef.current && !locationDropdownRef.current.contains(event.target as Node)) {
@@ -96,19 +99,35 @@ export function ExpensePage() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const fetchCurrentUser = async () => {
+  // Returns whether the user is a partner
+  const fetchCurrentUser = async (): Promise<boolean> => {
     try {
       const { data: { user }, error } = await supabase.auth.getUser();
       if (error) throw error;
       if (user) {
         setUserId(user.id);
+        const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
+        const partner = profile?.role === 'partner';
+        setIsPartner(partner);
+        return partner;
       }
     } catch (error) {
       console.error('Error fetching current user:', error);
     }
+    return false;
   };
 
-  const fetchLocations = async () => {
+  const fetchLocations = async (partner: boolean = isPartner) => {
+    // Partners can only use the job locations linked to their shared projects
+    if (partner) {
+      const { data, error } = await supabase.from('planner_project_locations').select('location');
+      if (error) {
+        console.error('Error fetching partner locations:', error);
+        return;
+      }
+      setLocations(Array.from(new Set((data || []).map(l => l.location))).sort());
+      return;
+    }
     try {
       // Fetch ALL time entries using pagination to bypass 1000 row limit
       let allEntries: any[] = [];
@@ -227,6 +246,19 @@ export function ExpensePage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (isPartner) {
+      const badLocation = expenses.find(exp => !locations.includes(exp.location));
+      if (badLocation) {
+        alert(
+          locations.length === 0
+            ? 'No job has been shared with you yet. Ask an admin to share a project with you.'
+            : `Please pick one of your shared jobs from the Location list (${locations.join(', ')}).`
+        );
+        return;
+      }
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -395,6 +427,7 @@ export function ExpensePage() {
         retailer_name: ''
       }]);
       await fetchLocations();
+      setExpenseListKey(k => k + 1);
       alert('Expenses submitted successfully!');
     } catch (error) {
       console.error('Error submitting expenses:', error);
@@ -701,6 +734,8 @@ export function ExpensePage() {
           </button>
         </div>
       </form>
+
+      {isPartner && <JobExpenseList refreshKey={expenseListKey} />}
     </div>
   );
 }

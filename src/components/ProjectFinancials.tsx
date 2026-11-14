@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { parseISO } from 'date-fns';
 import { DollarSign, X, Plus, ChevronDown, ChevronRight, MapPin } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 interface ProjectFinancialsProps {
   projectId: string;
   currentUser: string;
+  // Admins can link/unlink jobs; partners just see the numbers
+  canManage: boolean;
 }
 
 interface LinkedLocation {
@@ -21,14 +22,6 @@ interface Totals {
   billed: number;
 }
 
-interface TimeEntryCostRow {
-  start_time: string | null;
-  end_time: string | null;
-  lunch_break: string | null;
-  is_full_day: boolean | null;
-  profiles: { rate: number | null } | null;
-}
-
 const EMPTY_TOTALS: Totals = { budget: 0, labor: 0, laborHours: 0, materials: 0, billed: 0 };
 const PAGE_SIZE = 1000;
 
@@ -37,21 +30,6 @@ const currency = (value: number) =>
 
 // Estimate versions are saved as "<job> v2", "<job> v3"…
 const baseJobName = (name: string | null | undefined) => (name || '').replace(/ v\d+$/, '').trim();
-
-// Same hour math as the invoice page so the numbers line up.
-const entryHours = (entry: { start_time: string | null; end_time: string | null; lunch_break: string | null; is_full_day: boolean | null }) => {
-  const start = entry.is_full_day ? '09:00' : entry.start_time;
-  const end = entry.is_full_day ? '17:00' : entry.end_time;
-  if (!start || !end) return 0;
-  const startTime = parseISO(`2000-01-01T${start}`);
-  const endTime = parseISO(`2000-01-01T${end}`);
-  let minutes = (endTime.getTime() - startTime.getTime()) / 1000 / 60;
-  if (entry.lunch_break) {
-    const [h, m] = entry.lunch_break.split(':').map(Number);
-    minutes -= (h || 0) * 60 + (m || 0);
-  }
-  return Number.isFinite(minutes) && minutes > 0 ? minutes / 60 : 0;
-};
 
 // Supabase caps responses at 1000 rows, so page through.
 async function fetchAll<T>(build: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>): Promise<T[]> {
@@ -65,7 +43,7 @@ async function fetchAll<T>(build: (from: number, to: number) => PromiseLike<{ da
   return rows;
 }
 
-export default function ProjectFinancials({ projectId, currentUser }: ProjectFinancialsProps) {
+export default function ProjectFinancials({ projectId, currentUser, canManage }: ProjectFinancialsProps) {
   const [expanded, setExpanded] = useState(true);
   const [linked, setLinked] = useState<LinkedLocation[]>([]);
   const [allLocations, setAllLocations] = useState<string[]>([]);
@@ -110,6 +88,8 @@ export default function ProjectFinancials({ projectId, currentUser }: ProjectFin
     }
   }, []);
 
+  // Totals come from a database function so partners can see them without
+  // access to individual time entries, pay rates, estimates or invoices.
   const fetchTotals = useCallback(async (locations: string[]) => {
     if (locations.length === 0) {
       setTotals(EMPTY_TOTALS);
@@ -117,55 +97,22 @@ export default function ProjectFinancials({ projectId, currentUser }: ProjectFin
     }
     setLoading(true);
     setError(null);
-    try {
-      const [entries, expenses, invoices, estimates] = await Promise.all([
-        fetchAll<TimeEntryCostRow>((from, to) =>
-          supabase
-            .from('time_entries')
-            .select('start_time, end_time, lunch_break, is_full_day, profiles(rate)')
-            .in('location', locations)
-            .range(from, to) as unknown as PromiseLike<{ data: TimeEntryCostRow[] | null; error: unknown }>),
-        fetchAll<{ amount: number | string | null }>((from, to) =>
-          supabase.from('expenses').select('amount').in('location', locations).range(from, to)),
-        fetchAll<{ grand_total: number | string | null }>((from, to) =>
-          supabase.from('invoices').select('grand_total').in('location', locations).eq('status', 'finalized').range(from, to)),
-        fetchAll<{ job_name: string | null; total: number | string | null; updated_at: string }>((from, to) =>
-          supabase.from('estimate_worksheets').select('job_name, total, updated_at').range(from, to))
-      ]);
-
-      let labor = 0;
-      let laborHours = 0;
-      entries.forEach(entry => {
-        const hours = entryHours(entry);
-        laborHours += hours;
-        labor += hours * Number(entry.profiles?.rate || 0);
-      });
-
-      const materials = expenses.reduce((sum, e) => sum + Number(e.amount || 0), 0);
-      const billed = invoices.reduce((sum, i) => sum + Number(i.grand_total || 0), 0);
-
-      // Budget = latest estimate version for each linked job
-      const wanted = new Set(locations);
-      const latestByJob = new Map<string, { total: number; updated: number }>();
-      estimates.forEach(est => {
-        const job = baseJobName(est.job_name);
-        if (!wanted.has(job)) return;
-        const updated = new Date(est.updated_at).getTime();
-        const current = latestByJob.get(job);
-        if (!current || updated > current.updated) {
-          latestByJob.set(job, { total: Number(est.total || 0), updated });
-        }
-      });
-      const budget = Array.from(latestByJob.values()).reduce((sum, e) => sum + e.total, 0);
-
-      setTotals({ budget, labor, laborHours, materials, billed });
-    } catch (err) {
-      console.error('Error calculating project financials:', err);
+    const { data, error } = await supabase.rpc('planner_project_financials', { p_project_id: projectId });
+    if (error) {
+      console.error('Error calculating project financials:', error);
       setError('Could not load project costs.');
-    } finally {
-      setLoading(false);
+    } else {
+      const row = (Array.isArray(data) ? data[0] : data) || {};
+      setTotals({
+        budget: Number(row.budget || 0),
+        labor: Number(row.labor || 0),
+        laborHours: Number(row.labor_hours || 0),
+        materials: Number(row.materials || 0),
+        billed: Number(row.billed || 0)
+      });
     }
-  }, []);
+    setLoading(false);
+  }, [projectId]);
 
   useEffect(() => {
     setLinked([]);
@@ -174,8 +121,8 @@ export default function ProjectFinancials({ projectId, currentUser }: ProjectFin
   }, [fetchLinked]);
 
   useEffect(() => {
-    fetchLocationOptions();
-  }, [fetchLocationOptions]);
+    if (canManage) fetchLocationOptions();
+  }, [canManage, fetchLocationOptions]);
 
   const linkedNames = useMemo(() => linked.map(l => l.location), [linked]);
 
@@ -239,18 +186,20 @@ export default function ProjectFinancials({ projectId, currentUser }: ProjectFin
                 <span key={l.id} className="inline-flex items-center gap-1 bg-white border border-emerald-200 rounded-full pl-2 pr-1 py-0.5 text-[11px] text-gray-800">
                   <MapPin size={10} className="text-emerald-600" />
                   {l.location}
-                  <button onClick={() => removeLocation(l.id)} className="p-0.5 rounded-full hover:bg-red-100 text-gray-500 hover:text-red-600" title="Unlink job">
+                  {canManage && <button onClick={() => removeLocation(l.id)} className="p-0.5 rounded-full hover:bg-red-100 text-gray-500 hover:text-red-600" title="Unlink job">
                     <X size={10} />
-                  </button>
+                  </button>}
                 </span>
               ))}
               {linked.length === 0 && (
                 <span className="text-[11px] text-gray-600">
-                  Link this project to its job so time, expenses, estimates and invoices roll up here.
+                  {canManage
+                    ? 'Link this project to its job so time, expenses, estimates and invoices roll up here.'
+                    : 'No job has been linked to this project yet.'}
                 </span>
               )}
             </div>
-            <div className="flex gap-1.5 mt-2">
+            {canManage && <div className="flex gap-1.5 mt-2">
               <input
                 list={`project-locations-${projectId}`}
                 value={newLocation}
@@ -270,7 +219,7 @@ export default function ProjectFinancials({ projectId, currentUser }: ProjectFin
                 <Plus size={12} className="mr-1" />
                 Link
               </button>
-            </div>
+            </div>}
           </div>
 
           {error && <div className="text-[11px] text-red-600">{error}</div>}
