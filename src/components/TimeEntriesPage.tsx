@@ -51,6 +51,9 @@ interface TimeEntry {
   notes: string | null;
   user_id: string;
   full_name: string;
+  // Extra people on the same punch (admins/supervisors). Each gets their own
+  // time entry on submit; user_id/full_name is the first person.
+  crew: Profile[];
   expenses: Expense[];
   work_type?: string[];
   work_type_other?: string | null;
@@ -78,6 +81,8 @@ export function TimeEntriesPage() {
   const [activeEmployeeDropdownIndex, setActiveEmployeeDropdownIndex] = useState<number | null>(null);
   const [activeRetailerDropdownIndex, setActiveRetailerDropdownIndex] = useState<{ entry: number, expense: number } | null>(null);
   const [employeeHighlight, setEmployeeHighlight] = useState<Record<number, number>>({});
+  // Search text in each entry's Employees box (separate from the chosen people)
+  const [employeeSearch, setEmployeeSearch] = useState<Record<number, string>>({});
   const [locationHighlight, setLocationHighlight] = useState<Record<number, number>>({});
   const [retailerHighlight, setRetailerHighlight] = useState<Record<string, number>>({});
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -133,6 +138,7 @@ export function TimeEntriesPage() {
       notes: '',
       user_id: (isAdmin || isSupervisor) ? '' : userId,
       full_name: (isAdmin || isSupervisor) ? '' : (currentUserProfile?.full_name || ''),
+      crew: [],
       expenses: [],
       work_type: [],
       work_type_other: null
@@ -220,6 +226,7 @@ export function TimeEntriesPage() {
             const { data: employeesData } = await supabase
               .from('profiles')
               .select('id, full_name')
+              .neq('role', 'partner')
               .order('full_name');
             
             if (employeesData) {
@@ -374,7 +381,9 @@ export function TimeEntriesPage() {
     if (entriesOver8Hours.length > 0) {
       const entryList = entriesOver8Hours.map(entry => {
         const hours = calculateEntryHours(entry);
-        const name = isAdmin ? entry.full_name : 'this employee';
+        const name = isAdmin
+          ? [entry.full_name, ...(entry.crew || []).map(c => c.full_name)].join(', ')
+          : 'this employee';
         return `${name} on ${format(parseISO(entry.date), 'MM/dd/yyyy')}: ${hours} hours`;
       }).join('\n');
 
@@ -389,6 +398,11 @@ export function TimeEntriesPage() {
 
     try {
       for (const entry of entries) {
+        // Everyone on this punch gets their own row; expenses go on the first person's only
+        const people = (isAdmin || isSupervisor)
+          ? [{ id: entry.user_id, full_name: entry.full_name }, ...(entry.crew || [])]
+          : [{ id: userId, full_name: currentUserProfile?.full_name || '' }];
+
         // Prepare work_type payload. If 'Other' selected, concat reason into the stored value.
         const workTypeForDb = (entry.work_type || []).map(wt => {
           if (wt === 'Other') {
@@ -399,9 +413,10 @@ export function TimeEntriesPage() {
           return wt;
         });
 
-        const { data: timeEntry, error: timeEntryError } = await supabase
+        // One insert for the whole crew, so it's all-or-nothing
+        const { data: insertedEntries, error: timeEntryError } = await supabase
           .from('time_entries')
-          .insert({
+          .insert(people.map(person => ({
             date: entry.date,
             is_full_day: entry.is_full_day,
             start_time: entry.is_full_day ? '08:00' : entry.start_time,
@@ -409,18 +424,20 @@ export function TimeEntriesPage() {
             location: entry.location,
             lunch_break: entry.has_lunch_break ? entry.lunch_break : null,
             notes: entry.notes,
-            user_id: (isAdmin || isSupervisor) ? entry.user_id : userId,
-            full_name: (isAdmin || isSupervisor) ? entry.full_name : currentUserProfile?.full_name,
+            user_id: person.id,
+            full_name: person.full_name,
             work_type: workTypeForDb,
             work_type_other: entry.work_type_other || null
-          })
-          .select()
-          .single();
+          })))
+          .select();
 
-        if (timeEntryError) {
+        if (timeEntryError || !insertedEntries || insertedEntries.length === 0) {
           console.error('Time entry error:', timeEntryError);
           throw new Error('Failed to save time entry');
         }
+
+        // Expenses attach to the first person's entry only
+        const timeEntry = insertedEntries.find(e => e.user_id === people[0].id) || insertedEntries[0];
 
         if (entry.expenses.length > 0) {
           for (const expense of entry.expenses) {
@@ -511,6 +528,7 @@ export function TimeEntriesPage() {
       }
 
       setEntries([createDefaultEntry()]);
+      setEmployeeSearch({});
       await fetchLocations();
       playSuccessSound();
       console.log('✅ Success: Time entries and expenses submitted successfully!');
@@ -535,10 +553,42 @@ export function TimeEntriesPage() {
     if (!isAdmin && !isSupervisor) return; // Only allow Admins and Supervisors to select employees
 
     const newEntries = [...entries];
-    newEntries[entryIndex].user_id = employeeId;
-    newEntries[entryIndex].full_name = employeeName;
+    const entry = newEntries[entryIndex];
+    const alreadyChosen = entry.user_id === employeeId || (entry.crew || []).some(c => c.id === employeeId);
+    if (!alreadyChosen) {
+      if (!entry.user_id) {
+        entry.user_id = employeeId;
+        entry.full_name = employeeName;
+      } else {
+        entry.crew = [...(entry.crew || []), { id: employeeId, full_name: employeeName }];
+      }
+    }
     setEntries(newEntries);
+    setEmployeeSearch(prev => ({ ...prev, [entryIndex]: '' }));
+    setEmployeeHighlight(prev => ({ ...prev, [entryIndex]: 0 }));
     setActiveEmployeeDropdownIndex(null);
+  };
+
+  const handleEmployeeRemove = (employeeId: string, entryIndex: number) => {
+    const newEntries = [...entries];
+    const entry = newEntries[entryIndex];
+    if (entry.user_id === employeeId) {
+      // Promote the next person to first (they'll carry any expenses)
+      const [next, ...rest] = entry.crew || [];
+      entry.user_id = next?.id || '';
+      entry.full_name = next?.full_name || '';
+      entry.crew = rest;
+    } else {
+      entry.crew = (entry.crew || []).filter(c => c.id !== employeeId);
+    }
+    setEntries(newEntries);
+  };
+
+  // People not yet on this entry whose name starts with the search text
+  const availableEmployees = (entry: TimeEntry, entryIndex: number) => {
+    const search = (employeeSearch[entryIndex] || '').toLowerCase();
+    const chosen = new Set([entry.user_id, ...(entry.crew || []).map(c => c.id)]);
+    return employees.filter(emp => !chosen.has(emp.id) && emp.full_name.toLowerCase().startsWith(search));
   };
 
   const handleLocationSelect = (location: string, entryIndex: number) => {
@@ -585,6 +635,7 @@ export function TimeEntriesPage() {
     const entryToDuplicate = entries[entryIndex];
     const newEntry: TimeEntry = {
       ...entryToDuplicate,
+      crew: [...(entryToDuplicate.crew || [])],
       id: crypto.randomUUID(),
       date: format(addDays(parseISO(entryToDuplicate.date), 1), 'yyyy-MM-dd'),
       expenses: [] // Clear expenses for the new entry
@@ -717,16 +768,34 @@ export function TimeEntriesPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
                 {(isAdmin || isSupervisor) && (
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Employee</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Employees <span className="text-gray-400 font-normal">(add everyone on this job)</span>
+                    </label>
+                    {entry.user_id && (
+                      <div className="flex flex-wrap gap-1.5 mb-1.5">
+                        {[{ id: entry.user_id, full_name: entry.full_name }, ...(entry.crew || [])].map(person => (
+                          <span key={person.id} className="inline-flex items-center gap-1 bg-blue-50 border border-blue-200 text-blue-800 rounded-full pl-2.5 pr-1 py-0.5 text-sm">
+                            {person.full_name}
+                            <button
+                              type="button"
+                              onClick={() => handleEmployeeRemove(person.id, entryIndex)}
+                              className="p-0.5 rounded-full hover:bg-blue-100"
+                              title={`Remove ${person.full_name}`}
+                            >
+                              <X size={12} />
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
                     <div className="relative" ref={employeeDropdownRef}>
                       <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
                       <input
                         type="text"
-                        value={entry.full_name}
+                        value={employeeSearch[entryIndex] || ''}
                         onChange={(e) => {
-                          const newEntries = [...entries];
-                          newEntries[entryIndex].full_name = e.target.value;
-                          setEntries(newEntries);
+                          setEmployeeSearch(prev => ({ ...prev, [entryIndex]: e.target.value }));
+                          setEmployeeHighlight(prev => ({ ...prev, [entryIndex]: 0 }));
                           setActiveEmployeeDropdownIndex(entryIndex);
                         }}
                         onClick={() => {
@@ -734,7 +803,7 @@ export function TimeEntriesPage() {
                           setEmployeeHighlight(prev => ({ ...prev, [entryIndex]: 0 }));
                         }}
                         onKeyDown={(e) => {
-                          const filtered = employees.filter(emp => emp.full_name.toLowerCase().startsWith((entry.full_name || '').toLowerCase()));
+                          const filtered = availableEmployees(entry, entryIndex);
                           const max = filtered.length - 1;
                           if (e.key === 'ArrowDown') {
                             e.preventDefault();
@@ -750,18 +819,20 @@ export function TimeEntriesPage() {
                               const chosen = filtered[Math.max(0, Math.min(idx, max))];
                               if (chosen) handleEmployeeSelect(chosen.id, chosen.full_name, entryIndex);
                             }
+                          } else if (e.key === 'Backspace' && !(employeeSearch[entryIndex] || '')) {
+                            // Backspace on an empty box removes the last person added
+                            const last = (entry.crew || []).length > 0 ? entry.crew[entry.crew.length - 1].id : entry.user_id;
+                            if (last) handleEmployeeRemove(last, entryIndex);
                           } else if (e.key === 'Escape') {
                             setActiveEmployeeDropdownIndex(null);
                           }
                         }}
                         className="w-full pl-8 pr-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                        placeholder="Select employee"
+                        placeholder={entry.user_id ? 'Add another person' : 'Select employee(s)'}
                       />
-                      {activeEmployeeDropdownIndex === entryIndex && (
+                      {activeEmployeeDropdownIndex === entryIndex && availableEmployees(entry, entryIndex).length > 0 && (
                           <div className="absolute z-10 w-full mt-1 bg-white rounded-lg shadow-lg border border-gray-200 max-h-60 overflow-y-auto">
-                            {employees
-                              .filter(emp => emp.full_name.toLowerCase().startsWith((entry.full_name || '').toLowerCase()))
-                              .map((employee, i) => (
+                            {availableEmployees(entry, entryIndex).map((employee, i) => (
                                 <button
                                   key={employee.id}
                                   type="button"
@@ -774,6 +845,11 @@ export function TimeEntriesPage() {
                           </div>
                         )}
                     </div>
+                    {(entry.crew || []).length > 0 && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        Creates {1 + entry.crew.length} separate entries.{entry.expenses.length > 0 ? ` Expenses are logged once, under ${entry.full_name}.` : ''}
+                      </p>
+                    )}
                   </div>
                 )}
 
