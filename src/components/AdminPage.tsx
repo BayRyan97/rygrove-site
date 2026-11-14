@@ -347,7 +347,11 @@ function AdminPage() {
           .update({ role: createUserForm.role })
           .eq('id', authData.user.id);
 
-        if (roleError) throw roleError;
+        if (roleError) {
+          // Only admins can set roles; if this fails the account still exists
+          console.error('Error setting new user role:', roleError);
+          toast.error('Account created as Employee, but the role could not be set. Change it from the Users list.');
+        }
       }
 
       // Reset form
@@ -1053,6 +1057,7 @@ function AdminPage() {
                   <option value="employee">Employee</option>
                   <option value="supervisor">Supervisor</option>
                   <option value="admin">Admin</option>
+                  <option value="partner">Partner (outside, shared projects only)</option>
                 </select>
               </div>
             </div>
@@ -1213,6 +1218,7 @@ function AdminPage() {
                         <option value="employee">Employee</option>
                         <option value="supervisor">Supervisor</option>
                         <option value="admin">Admin</option>
+                        <option value="partner">Partner</option>
                       </select>
                       <div className="flex space-x-2">
                         <button

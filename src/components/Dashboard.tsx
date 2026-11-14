@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Calendar, DollarSign, LogOut, Eye, Shield, Menu, X, ChevronDown, FileSpreadsheet, Calculator, FolderKanban, Home, MessageSquare } from 'lucide-react';
-import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
+import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 import { TimeEntriesPage } from './TimeEntriesPage';
@@ -45,6 +45,9 @@ export function Dashboard({ user }: DashboardProps) {
   const activeTab = location.pathname.slice(1) || 'view-activity';
   const [profile, setProfile] = useState<Profile | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  // Partners are outside collaborators: Project Planner and Expenses only
+  const [isPartner, setIsPartner] = useState(false);
+  const [profileLoaded, setProfileLoaded] = useState(false);
   const [pictureTimestamp, setPictureTimestamp] = useState<number>(Date.now());
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -121,6 +124,10 @@ export function Dashboard({ user }: DashboardProps) {
     }
   ];
 
+  const PARTNER_PAGES = ['planner', 'expenses'];
+  const visibleMenuItems = isPartner ? menuItems.filter(item => PARTNER_PAGES.includes(item.id)) : menuItems;
+  const homePath = isPartner ? '/planner' : '/view-activity';
+
   const getCurrentSection = () => {
     return menuItems.find(item => item.id === activeTab)?.label || 'Dashboard';
   };
@@ -142,7 +149,9 @@ export function Dashboard({ user }: DashboardProps) {
       if (!error && data) {
         setProfile(data);
         setIsAdmin(data.role === 'admin');
+        setIsPartner(data.role === 'partner');
       }
+      setProfileLoaded(true);
     }
     getProfile();
   }, [user.id]);
@@ -181,7 +190,7 @@ export function Dashboard({ user }: DashboardProps) {
           <div className="h-16 flex items-center justify-between">
             <div className="flex items-center">
               <button
-                onClick={() => navigate('/view-activity')}
+                onClick={() => navigate(homePath)}
                 className="text-2xl font-bold text-blue-600 tracking-tight hover:text-blue-700 transition-colors cursor-pointer"
               >
                 RY<span className="text-blue-500">GROVE</span>
@@ -198,7 +207,7 @@ export function Dashboard({ user }: DashboardProps) {
                 {isDropdownOpen && (
                   <div className="absolute top-full left-0 mt-1 w-52 bg-white rounded-xl shadow-xl border border-gray-200 py-2">
                     {(() => {
-                      const visibleItems = menuItems.filter(item => item.show);
+                      const visibleItems = visibleMenuItems.filter(item => item.show);
                       const coreItems = visibleItems.filter(item => item.group === 'core');
                       const toolItems = visibleItems.filter(item => item.group === 'tools');
                       const adminItems = visibleItems.filter(item => item.group === 'admin');
@@ -326,7 +335,7 @@ export function Dashboard({ user }: DashboardProps) {
             onClick={e => e.stopPropagation()}
           >
             <nav className="p-4 space-y-2">
-              {menuItems.filter(item => item.show).map(item => {
+              {visibleMenuItems.filter(item => item.show).map(item => {
                 const Icon = item.icon;
                 return (
                   <button
@@ -371,6 +380,15 @@ export function Dashboard({ user }: DashboardProps) {
                 : 'bg-white'
             }`}
           >
+            {!profileLoaded ? (
+              <div className="flex items-center justify-center py-12 text-gray-500">Loading...</div>
+            ) : isPartner ? (
+              <Routes>
+                <Route path="/planner" element={<PlannerPage />} />
+                <Route path="/expenses" element={<ExpensePage />} />
+                <Route path="*" element={<Navigate to="/planner" replace />} />
+              </Routes>
+            ) : (
             <Routes>
               <Route path="/landing" element={<LandingPage isAuthenticated={true} />} />
               <Route path="/" element={<ViewActivityPage />} />
@@ -390,6 +408,7 @@ export function Dashboard({ user }: DashboardProps) {
                 } 
               />
             </Routes>
+            )}
           </div>
         </div>
       </div>
