@@ -1555,6 +1555,8 @@ export function CreateInvoicePage() {
     ? 'all'
     : locations.includes(selectedLocation.trim()) ? 'location' : null;
 
+  const [billingListTab, setBillingListTab] = useState<'recent' | 'unpaid'>('recent');
+
   const billingSummary = useMemo(() => {
     const invoices = invoiceVault.filter((inv) => inv.status === 'finalized');
     if (invoices.length === 0) return null;
@@ -1572,7 +1574,10 @@ export function CreateInvoicePage() {
       (sum, inv) => sum + Math.max(0, (Number(inv.grand_total) || 0) - (Number(inv.amount_paid) || 0)),
       0
     );
-    return { count: invoices.length, lastInvoice, billedThrough, totalBilled, totalPaid, outstanding, openInvoices };
+    const recentInvoices = [...invoices]
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .slice(0, 5);
+    return { count: invoices.length, lastInvoice, billedThrough, totalBilled, totalPaid, outstanding, openInvoices, recentInvoices };
   }, [invoiceVault]);
 
   const recordInvoicePayment = async () => {
@@ -1898,7 +1903,14 @@ export function CreateInvoicePage() {
             ) : (
               <>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <div className="rounded bg-white border border-gray-200 p-3">
+                  <button
+                    type="button"
+                    onClick={() => void loadInvoiceFromVault(billingSummary.lastInvoice.id)}
+                    title="Open this invoice"
+                    className={`text-left rounded bg-white border p-3 hover:border-blue-400 hover:bg-blue-50 transition-colors ${
+                      selectedVaultInvoiceId === billingSummary.lastInvoice.id ? 'border-blue-500 ring-1 ring-blue-500' : 'border-gray-200'
+                    }`}
+                  >
                     <div className="text-xs text-gray-500">Last Bill Sent</div>
                     <div className="text-sm font-semibold text-gray-900">
                       {format(new Date(billingSummary.lastInvoice.created_at), 'MM/dd/yyyy')}
@@ -1907,7 +1919,7 @@ export function CreateInvoicePage() {
                       #{billingSummary.lastInvoice.invoice_number || '—'} • ${formatCurrency(Number(billingSummary.lastInvoice.grand_total) || 0)}
                       {billingSummaryScope === 'all' && billingSummary.lastInvoice.location ? ` • ${billingSummary.lastInvoice.location}` : ''}
                     </div>
-                  </div>
+                  </button>
                   <div className="rounded bg-white border border-gray-200 p-3">
                     <div className="text-xs text-gray-500">Billed Through</div>
                     <div className="text-sm font-semibold text-gray-900">
@@ -1930,33 +1942,69 @@ export function CreateInvoicePage() {
                     </div>
                   </div>
                 </div>
-                {billingSummary.openInvoices.length > 0 && (
-                  <div className="mt-3">
-                    <div className="text-xs font-medium text-gray-600 mb-1">Not yet paid</div>
-                    <ul className="divide-y divide-gray-200 rounded border border-gray-200 bg-white text-sm">
-                      {billingSummary.openInvoices.slice(0, 5).map((inv) => (
-                        <li key={inv.id} className="flex items-center justify-between px-3 py-1.5">
-                          <span className="text-gray-700">
-                            #{inv.invoice_number || '—'}
-                            {billingSummaryScope === 'all' && inv.location ? ` • ${inv.location}` : ''}
-                            <span className="text-gray-400"> • {format(parseISO(inv.start_date), 'MM/dd/yy')}–{format(parseISO(inv.end_date), 'MM/dd/yy')}</span>
-                          </span>
-                          <span className="flex items-center gap-2">
-                            <span className={`text-xs px-1.5 py-0.5 rounded ${inv.payment_status === 'partial' ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-700'}`}>
-                              {inv.payment_status === 'partial' ? 'Partial' : 'Unpaid'}
-                            </span>
-                            <span className="font-medium text-gray-900">
-                              ${formatCurrency(Math.max(0, (Number(inv.grand_total) || 0) - (Number(inv.amount_paid) || 0)))}
-                            </span>
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                    {billingSummary.openInvoices.length > 5 && (
-                      <div className="text-xs text-gray-500 mt-1">+{billingSummary.openInvoices.length - 5} more in the Invoice Vault below</div>
-                    )}
-                  </div>
-                )}
+                {(() => {
+                  const listInvoices = billingListTab === 'unpaid'
+                    ? billingSummary.openInvoices.slice(0, 5)
+                    : billingSummary.recentInvoices;
+                  const moreCount = billingListTab === 'unpaid'
+                    ? billingSummary.openInvoices.length - 5
+                    : billingSummary.count - 5;
+                  const tabClass = (active: boolean) =>
+                    `px-2 py-0.5 text-xs rounded ${active ? 'bg-white border border-gray-300 text-gray-900 font-medium' : 'text-gray-500 hover:text-gray-800'}`;
+                  return (
+                    <div className="mt-3">
+                      <div className="flex items-center gap-1 mb-1">
+                        <button type="button" className={tabClass(billingListTab === 'recent')} onClick={() => setBillingListTab('recent')}>
+                          Recent
+                        </button>
+                        <button type="button" className={tabClass(billingListTab === 'unpaid')} onClick={() => setBillingListTab('unpaid')}>
+                          Not yet paid ({billingSummary.openInvoices.length})
+                        </button>
+                        <span className="ml-auto text-xs text-gray-400">Click an invoice to open it</span>
+                      </div>
+                      {listInvoices.length === 0 ? (
+                        <p className="text-sm text-gray-500 px-1 py-1.5">Everything is paid up.</p>
+                      ) : (
+                        <ul className="divide-y divide-gray-200 rounded border border-gray-200 bg-white text-sm overflow-hidden">
+                          {listInvoices.map((inv) => {
+                            const remaining = Math.max(0, (Number(inv.grand_total) || 0) - (Number(inv.amount_paid) || 0));
+                            const badge = inv.payment_status === 'paid'
+                              ? { label: 'Paid', cls: 'bg-green-100 text-green-800' }
+                              : inv.payment_status === 'partial'
+                                ? { label: 'Partial', cls: 'bg-yellow-100 text-yellow-800' }
+                                : { label: 'Unpaid', cls: 'bg-red-100 text-red-700' };
+                            return (
+                              <li key={inv.id}>
+                                <button
+                                  type="button"
+                                  onClick={() => void loadInvoiceFromVault(inv.id)}
+                                  className={`w-full flex items-center justify-between px-3 py-1.5 text-left hover:bg-blue-50 transition-colors ${
+                                    selectedVaultInvoiceId === inv.id ? 'bg-blue-50' : ''
+                                  }`}
+                                >
+                                  <span className="text-gray-700">
+                                    #{inv.invoice_number || '—'}
+                                    {billingSummaryScope === 'all' && inv.location ? ` • ${inv.location}` : ''}
+                                    <span className="text-gray-400"> • {format(parseISO(inv.start_date), 'MM/dd/yy')}–{format(parseISO(inv.end_date), 'MM/dd/yy')}</span>
+                                  </span>
+                                  <span className="flex items-center gap-2">
+                                    <span className={`text-xs px-1.5 py-0.5 rounded ${badge.cls}`}>{badge.label}</span>
+                                    <span className="font-medium text-gray-900">
+                                      ${formatCurrency(inv.payment_status === 'paid' ? (Number(inv.grand_total) || 0) : remaining)}
+                                    </span>
+                                  </span>
+                                </button>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                      {moreCount > 0 && (
+                        <div className="text-xs text-gray-500 mt-1">+{moreCount} more in the Invoice Vault below</div>
+                      )}
+                    </div>
+                  );
+                })()}
                 {billingSummaryScope === 'location' && billingSummary.billedThrough && (
                   <button
                     type="button"
