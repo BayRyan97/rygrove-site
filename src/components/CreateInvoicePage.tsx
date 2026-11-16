@@ -162,6 +162,48 @@ export function CreateInvoicePage() {
     fetchInvoiceVault();
   }, [selectedLocation]);
 
+  // "All Time" preset: span from the location's earliest to latest entry/expense
+  const getAllTimeRange = async (location: string) => {
+    const today = format(new Date(), 'yyyy-MM-dd');
+    if (!location || !locations.includes(location)) {
+      return { start: '2000-01-01', end: today };
+    }
+    const edge = async (table: 'time_entries' | 'expenses', ascending: boolean) => {
+      const { data } = await supabase
+        .from(table)
+        .select('date')
+        .eq('location', location)
+        .not('date', 'is', null)
+        .order('date', { ascending })
+        .limit(1);
+      return (data?.[0] as { date?: string } | undefined)?.date ?? null;
+    };
+    const [firstEntry, firstExpense, lastEntry, lastExpense] = await Promise.all([
+      edge('time_entries', true),
+      edge('expenses', true),
+      edge('time_entries', false),
+      edge('expenses', false),
+    ]);
+    const firsts = [firstEntry, firstExpense].filter(Boolean) as string[];
+    const lasts = [lastEntry, lastExpense, today].filter(Boolean) as string[];
+    return {
+      start: firsts.length ? firsts.sort()[0] : today,
+      end: lasts.sort()[lasts.length - 1],
+    };
+  };
+
+  useEffect(() => {
+    if (datePreset !== 'all-time') return;
+    let cancelled = false;
+    getAllTimeRange(selectedLocation).then(({ start, end }) => {
+      if (cancelled) return;
+      setStartDate(start);
+      setEndDate(end);
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [datePreset, selectedLocation, locations]);
+
   // Filter locations based on search input
   useEffect(() => {
     if (selectedLocation.trim()) {
@@ -1760,6 +1802,17 @@ export function CreateInvoicePage() {
                 </button>
                 <button
                   type="button"
+                  onClick={() => setDatePreset('all-time')}
+                  className={`px-3 py-1.5 text-sm rounded border ${
+                    datePreset === 'all-time' 
+                      ? 'bg-blue-50 border-blue-500 text-blue-700' 
+                      : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  All Time
+                </button>
+                <button
+                  type="button"
                   onClick={() => setDatePreset('custom')}
                   className={`px-3 py-1.5 text-sm rounded border ${
                     datePreset === 'custom' 
@@ -1772,6 +1825,12 @@ export function CreateInvoicePage() {
               </div>
             </div>
             
+            {datePreset === 'all-time' && startDate && endDate && (
+              <p className="text-xs text-gray-500 mt-2">
+                {format(parseISO(startDate), 'MM/dd/yyyy')} – {format(parseISO(endDate), 'MM/dd/yyyy')}
+              </p>
+            )}
+
             {datePreset === 'custom' && (
               <div className="grid grid-cols-2 gap-2 mt-2">
                 <div>
