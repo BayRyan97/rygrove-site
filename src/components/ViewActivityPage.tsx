@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { format, parseISO, differenceInMinutes, eachDayOfInterval, subDays, subMonths, startOfQuarter, subQuarters, subYears } from 'date-fns';
-import { Calendar, Search, User, MapPin, ChevronDown, ChevronRight, X, Download, Trash2 } from 'lucide-react';
+import { Calendar, Search, User, MapPin, ChevronDown, ChevronRight, X, Download, Trash2, Pencil } from 'lucide-react';
 import { supabase, getUserRole } from '../lib/supabase';
 import { generateActivityPDF } from '../lib/pdfExport';
 import { distinctColors, generateUniqueColor } from '../lib/colorUtils';
@@ -67,6 +67,8 @@ interface TimeEntry {
   chart_color?: string | null;
   is_expense_only?: boolean;
   expenses: {
+    id?: string;
+    date?: string | null;
     amount: number;
     description: string;
     receipt_url: string | null;
@@ -152,6 +154,9 @@ export function ViewActivityPage() {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedEntries, setSelectedEntries] = useState<TimeEntry[]>([]);
   const [isExpensesModalOpen, setIsExpensesModalOpen] = useState(false);
+  const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
+  const [expenseEditValues, setExpenseEditValues] = useState<{ description: string; date: string }>({ description: '', date: '' });
+  const [isSavingExpense, setIsSavingExpense] = useState(false);
   const chartRef = useRef<ChartJS | null>(null);
 
   const chartOptions = {
@@ -695,7 +700,7 @@ export function ViewActivityPage() {
           is_full_day,
           work_type,
           work_type_other,
-          expenses (amount, description, receipt_url, retailer_id, retailers(name))
+          expenses (id, date, amount, description, receipt_url, retailer_id, retailers(name))
         `)
         .gte('date', startDate)
         .lte('date', endDate)
@@ -831,6 +836,8 @@ export function ViewActivityPage() {
           rate: rateMap.get(exp.user_id) || 0,
           chart_color: colorMap.get(nameMap.get(exp.user_id) || ''),
           expenses: [{
+            id: exp.id,
+            date: exp.date,
             amount: exp.amount,
             description: exp.description,
             receipt_url: exp.receipt_url || exp.receipt_image_url,
@@ -859,6 +866,22 @@ export function ViewActivityPage() {
   }, [startDate, endDate]);
 
   const deleteEntry = async (entryId: string) => {
+    if (entryId.startsWith('expense-')) {
+      if (!confirm('Are you sure you want to delete this expense?')) return;
+      try {
+        const { error } = await supabase
+          .from('expenses')
+          .delete()
+          .eq('id', entryId.replace(/^expense-/, ''));
+        if (error) throw error;
+        setEntries(prevEntries => prevEntries.filter(entry => entry.id !== entryId));
+      } catch (error) {
+        console.error('Error deleting expense:', error);
+        alert('Failed to delete expense');
+      }
+      return;
+    }
+
     if (!confirm('Are you sure you want to delete this time entry?')) {
       return;
     }
@@ -879,7 +902,123 @@ export function ViewActivityPage() {
     }
   };
 
+  const startExpenseEdit = (expense: TimeEntry['expenses'][number], entry: TimeEntry) => {
+    if (!expense.id) return;
+    setEditingExpenseId(expense.id);
+    setExpenseEditValues({
+      description: expense.description || '',
+      date: expense.date || entry.date,
+    });
+  };
+
+  const cancelExpenseEdit = () => {
+    setEditingExpenseId(null);
+    setExpenseEditValues({ description: '', date: '' });
+  };
+
+  const saveExpenseEdit = async (expense: TimeEntry['expenses'][number], entry: TimeEntry) => {
+    if (!expense.id) return;
+    const description = expenseEditValues.description.trim();
+    const date = expenseEditValues.date;
+    if (!description || !date) {
+      alert('Description and date are required.');
+      return;
+    }
+
+    const payload: Record<string, unknown> = {
+      description,
+      date,
+      updated_at: new Date().toISOString(),
+    };
+
+    // An expense attached to a time entry is shown on that entry's day. If its
+    // date is moved to a different day, detach it so it shows (and bills) on the new date.
+    const isLinked = !entry.is_expense_only;
+    if (isLinked && date !== entry.date) {
+      if (!confirm('This expense is attached to a time entry on a different day. Changing the date will move it to a standalone expense on the new date. Continue?')) {
+        return;
+      }
+      payload.time_entry_id = null;
+      payload.location = entry.location;
+    }
+
+    setIsSavingExpense(true);
+    try {
+      const { error } = await supabase
+        .from('expenses')
+        .update(payload)
+        .eq('id', expense.id);
+      if (error) throw error;
+      cancelExpenseEdit();
+      await fetchEntries();
+    } catch (error) {
+      console.error('Error saving expense:', error);
+      alert('Failed to save expense');
+    } finally {
+      setIsSavingExpense(false);
+    }
+  };
+
+  const renderExpenseEditor = (expense: TimeEntry['expenses'][number], entry: TimeEntry) => (
+    <div className="flex-1 space-y-2">
+      <div>
+        <label className="block text-xs text-gray-600 mb-0.5">Description</label>
+        <input
+          type="text"
+          value={expenseEditValues.description}
+          onChange={(e) => setExpenseEditValues(prev => ({ ...prev, description: e.target.value }))}
+          className="w-full px-2 py-1 border rounded text-sm"
+          autoFocus
+        />
+      </div>
+      <div>
+        <label className="block text-xs text-gray-600 mb-0.5">Date</label>
+        <input
+          type="date"
+          value={expenseEditValues.date}
+          onChange={(e) => setExpenseEditValues(prev => ({ ...prev, date: e.target.value }))}
+          className="px-2 py-1 border rounded text-sm"
+        />
+      </div>
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={cancelExpenseEdit}
+          className="px-2 py-1 border rounded text-xs"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={() => saveExpenseEdit(expense, entry)}
+          disabled={isSavingExpense}
+          className="px-2 py-1 bg-blue-600 text-white rounded text-xs disabled:opacity-50"
+        >
+          {isSavingExpense ? 'Saving...' : 'Save'}
+        </button>
+      </div>
+    </div>
+  );
+
+  const renderExpenseEditButton = (expense: TimeEntry['expenses'][number], entry: TimeEntry) =>
+    isAdmin && expense.id ? (
+      <button
+        type="button"
+        onClick={() => startExpenseEdit(expense, entry)}
+        className="text-blue-600 hover:text-blue-800 p-1 rounded hover:bg-blue-50"
+        title="Edit expense"
+      >
+        <Pencil className="h-3.5 w-3.5" />
+      </button>
+    ) : null;
+
   const startEditing = (entry: TimeEntry) => {
+    // Expense-only rows aren't time entries; edit the expense itself instead
+    if (entry.is_expense_only) {
+      const expense = entry.expenses?.[0];
+      if (expense) startExpenseEdit(expense, entry);
+      return;
+    }
     setEditingEntryId(entry.id);
     setEditValues({
       date: entry.date,
@@ -917,7 +1056,7 @@ export function ViewActivityPage() {
         .update(payload)
         .eq('id', entryId)
         .select(
-          `id, date, start_time, end_time, location, lunch_break, notes, created_at, user_id, full_name, is_full_day, work_type, work_type_other, expenses (amount, description, receipt_url, retailer_id, retailers(name))`
+          `id, date, start_time, end_time, location, lunch_break, notes, created_at, user_id, full_name, is_full_day, work_type, work_type_other, expenses (id, date, amount, description, receipt_url, retailer_id, retailers(name))`
         )
         .single();
 
@@ -1827,7 +1966,8 @@ export function ViewActivityPage() {
                                                     <p className="text-xs font-medium text-gray-700 mb-1">Expenses</p>
                                                     <div className="space-y-2">
                                                       {entry.expenses.map((expense, index) => (
-                                                        <div key={index} className="flex items-start justify-between bg-gray-50 p-2 rounded-lg">
+                                                        <div key={expense.id || index} className="flex items-start justify-between bg-gray-50 p-2 rounded-lg">
+                                                          {editingExpenseId && editingExpenseId === expense.id ? renderExpenseEditor(expense, entry) : (
                                                           <div>
                                                             <p className="text-xs text-gray-900">{expense.description}</p>
                                                             {expense.retailers?.name && (
@@ -1843,9 +1983,13 @@ export function ViewActivityPage() {
                                                               </button>
                                                             )}
                                                           </div>
-                                                          <p className="text-xs font-medium text-gray-900">
-                                                            ${expense.amount.toFixed(2)}
-                                                          </p>
+                                                          )}
+                                                          <div className="flex items-start gap-1">
+                                                            <p className="text-xs font-medium text-gray-900">
+                                                              ${expense.amount.toFixed(2)}
+                                                            </p>
+                                                            {editingExpenseId !== expense.id && renderExpenseEditButton(expense, entry)}
+                                                          </div>
                                                         </div>
                                                       ))}
                                                     </div>
@@ -2083,7 +2227,8 @@ export function ViewActivityPage() {
                       <p className="text-xs font-medium text-gray-700 mb-1">Expenses</p>
                       <div className="space-y-2">
                         {selectedEntry.expenses.map((expense, index) => (
-                          <div key={index} className="flex items-start justify-between bg-gray-50 p-2 rounded-lg">
+                          <div key={expense.id || index} className="flex items-start justify-between bg-gray-50 p-2 rounded-lg">
+                            {editingExpenseId && editingExpenseId === expense.id ? renderExpenseEditor(expense, selectedEntry) : (
                             <div>
                               <p className="text-xs text-gray-900">{expense.description}</p>
                               {expense.retailers?.name && (
@@ -2099,9 +2244,13 @@ export function ViewActivityPage() {
                                 </button>
                               )}
                             </div>
-                            <p className="text-xs font-medium text-gray-900">
-                              ${expense.amount.toFixed(2)}
-                            </p>
+                            )}
+                            <div className="flex items-start gap-1">
+                              <p className="text-xs font-medium text-gray-900">
+                                ${expense.amount.toFixed(2)}
+                              </p>
+                              {editingExpenseId !== expense.id && renderExpenseEditButton(expense, selectedEntry)}
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -2181,7 +2330,8 @@ export function ViewActivityPage() {
                       
                       <div className="space-y-2">
                         {entry.expenses.map((expense, index) => (
-                          <div key={index} className="flex items-start justify-between bg-gray-50 p-3 rounded-lg">
+                          <div key={expense.id || index} className="flex items-start justify-between bg-gray-50 p-3 rounded-lg">
+                            {editingExpenseId && editingExpenseId === expense.id ? renderExpenseEditor(expense, entry) : (
                             <div className="flex-1">
                               <p className="text-sm font-medium text-gray-900">{expense.description}</p>
                               {expense.retailers?.name && (
@@ -2199,9 +2349,13 @@ export function ViewActivityPage() {
                                 <p className="text-xs text-gray-400 mt-1">No receipt attached</p>
                               )}
                             </div>
-                            <p className="text-sm font-semibold text-gray-900 ml-4">
-                              {formatCurrency(expense.amount)}
-                            </p>
+                            )}
+                            <div className="flex items-start gap-1 ml-4">
+                              <p className="text-sm font-semibold text-gray-900">
+                                {formatCurrency(expense.amount)}
+                              </p>
+                              {editingExpenseId !== expense.id && renderExpenseEditButton(expense, entry)}
+                            </div>
                           </div>
                         ))}
                       </div>
