@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { format, parseISO } from 'date-fns';
+import { addDays, format, parseISO } from 'date-fns';
 import { FileSpreadsheet, Search, MapPin, ChevronDown, FileText } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { generateClientInvoicePDF } from '../lib/pdfExport';
@@ -161,6 +161,48 @@ export function CreateInvoicePage() {
   useEffect(() => {
     fetchInvoiceVault();
   }, [selectedLocation]);
+
+  // "All Time" preset: span from the location's earliest to latest entry/expense
+  const getAllTimeRange = async (location: string) => {
+    const today = format(new Date(), 'yyyy-MM-dd');
+    if (!location || !locations.includes(location)) {
+      return { start: '2000-01-01', end: today };
+    }
+    const edge = async (table: 'time_entries' | 'expenses', ascending: boolean) => {
+      const { data } = await supabase
+        .from(table)
+        .select('date')
+        .eq('location', location)
+        .not('date', 'is', null)
+        .order('date', { ascending })
+        .limit(1);
+      return (data?.[0] as { date?: string } | undefined)?.date ?? null;
+    };
+    const [firstEntry, firstExpense, lastEntry, lastExpense] = await Promise.all([
+      edge('time_entries', true),
+      edge('expenses', true),
+      edge('time_entries', false),
+      edge('expenses', false),
+    ]);
+    const firsts = [firstEntry, firstExpense].filter(Boolean) as string[];
+    const lasts = [lastEntry, lastExpense, today].filter(Boolean) as string[];
+    return {
+      start: firsts.length ? firsts.sort()[0] : today,
+      end: lasts.sort()[lasts.length - 1],
+    };
+  };
+
+  useEffect(() => {
+    if (datePreset !== 'all-time') return;
+    let cancelled = false;
+    getAllTimeRange(selectedLocation).then(({ start, end }) => {
+      if (cancelled) return;
+      setStartDate(start);
+      setEndDate(end);
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [datePreset, selectedLocation, locations]);
 
   // Filter locations based on search input
   useEffect(() => {
@@ -1508,6 +1550,31 @@ export function CreateInvoicePage() {
 
   const selectedVaultInvoice = invoiceVault.find((invoice) => invoice.id === selectedVaultInvoiceId) || null;
 
+  // High-level billing context for the selected location (or all locations)
+  const billingSummaryScope: 'location' | 'all' | null = !selectedLocation.trim()
+    ? 'all'
+    : locations.includes(selectedLocation.trim()) ? 'location' : null;
+
+  const billingSummary = useMemo(() => {
+    const invoices = invoiceVault.filter((inv) => inv.status === 'finalized');
+    if (invoices.length === 0) return null;
+    const lastInvoice = [...invoices].sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    )[0];
+    const billedThrough = invoices.reduce(
+      (max, inv) => (inv.end_date && inv.end_date > max ? inv.end_date : max),
+      ''
+    );
+    const totalBilled = invoices.reduce((sum, inv) => sum + (Number(inv.grand_total) || 0), 0);
+    const totalPaid = invoices.reduce((sum, inv) => sum + (Number(inv.amount_paid) || 0), 0);
+    const openInvoices = invoices.filter((inv) => inv.payment_status !== 'paid');
+    const outstanding = openInvoices.reduce(
+      (sum, inv) => sum + Math.max(0, (Number(inv.grand_total) || 0) - (Number(inv.amount_paid) || 0)),
+      0
+    );
+    return { count: invoices.length, lastInvoice, billedThrough, totalBilled, totalPaid, outstanding, openInvoices };
+  }, [invoiceVault]);
+
   const recordInvoicePayment = async () => {
     if (!selectedVaultInvoice) return;
 
@@ -1760,6 +1827,17 @@ export function CreateInvoicePage() {
                 </button>
                 <button
                   type="button"
+                  onClick={() => setDatePreset('all-time')}
+                  className={`px-3 py-1.5 text-sm rounded border ${
+                    datePreset === 'all-time' 
+                      ? 'bg-blue-50 border-blue-500 text-blue-700' 
+                      : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  All Time
+                </button>
+                <button
+                  type="button"
                   onClick={() => setDatePreset('custom')}
                   className={`px-3 py-1.5 text-sm rounded border ${
                     datePreset === 'custom' 
@@ -1772,6 +1850,12 @@ export function CreateInvoicePage() {
               </div>
             </div>
             
+            {datePreset === 'all-time' && startDate && endDate && (
+              <p className="text-xs text-gray-500 mt-2">
+                {format(parseISO(startDate), 'MM/dd/yyyy')} – {format(parseISO(endDate), 'MM/dd/yyyy')}
+              </p>
+            )}
+
             {datePreset === 'custom' && (
               <div className="grid grid-cols-2 gap-2 mt-2">
                 <div>
@@ -1796,6 +1880,102 @@ export function CreateInvoicePage() {
             )}
           </div>
         </div>
+
+        {billingSummaryScope && !isVaultLoading && (
+          <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-gray-700">
+                Billing History — {billingSummaryScope === 'location' ? selectedLocation.trim() : 'All Locations'}
+              </h3>
+              {billingSummary && (
+                <span className="text-xs text-gray-500">
+                  {billingSummary.count} invoice{billingSummary.count === 1 ? '' : 's'} sent
+                </span>
+              )}
+            </div>
+            {!billingSummary ? (
+              <p className="text-sm text-gray-500">No invoices have been sent{billingSummaryScope === 'location' ? ' for this location' : ''} yet.</p>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="rounded bg-white border border-gray-200 p-3">
+                    <div className="text-xs text-gray-500">Last Bill Sent</div>
+                    <div className="text-sm font-semibold text-gray-900">
+                      {format(new Date(billingSummary.lastInvoice.created_at), 'MM/dd/yyyy')}
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      #{billingSummary.lastInvoice.invoice_number || '—'} • ${formatCurrency(Number(billingSummary.lastInvoice.grand_total) || 0)}
+                      {billingSummaryScope === 'all' && billingSummary.lastInvoice.location ? ` • ${billingSummary.lastInvoice.location}` : ''}
+                    </div>
+                  </div>
+                  <div className="rounded bg-white border border-gray-200 p-3">
+                    <div className="text-xs text-gray-500">Billed Through</div>
+                    <div className="text-sm font-semibold text-gray-900">
+                      {billingSummary.billedThrough ? format(parseISO(billingSummary.billedThrough), 'MM/dd/yyyy') : '—'}
+                    </div>
+                    <div className="text-xs text-gray-500">Latest period end date</div>
+                  </div>
+                  <div className="rounded bg-white border border-gray-200 p-3">
+                    <div className="text-xs text-gray-500">Paid</div>
+                    <div className="text-sm font-semibold text-green-700">${formatCurrency(billingSummary.totalPaid)}</div>
+                    <div className="text-xs text-gray-500">of ${formatCurrency(billingSummary.totalBilled)} billed</div>
+                  </div>
+                  <div className="rounded bg-white border border-gray-200 p-3">
+                    <div className="text-xs text-gray-500">Outstanding</div>
+                    <div className={`text-sm font-semibold ${billingSummary.outstanding > 0 ? 'text-red-700' : 'text-gray-900'}`}>
+                      ${formatCurrency(billingSummary.outstanding)}
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      {billingSummary.openInvoices.length} unpaid invoice{billingSummary.openInvoices.length === 1 ? '' : 's'}
+                    </div>
+                  </div>
+                </div>
+                {billingSummary.openInvoices.length > 0 && (
+                  <div className="mt-3">
+                    <div className="text-xs font-medium text-gray-600 mb-1">Not yet paid</div>
+                    <ul className="divide-y divide-gray-200 rounded border border-gray-200 bg-white text-sm">
+                      {billingSummary.openInvoices.slice(0, 5).map((inv) => (
+                        <li key={inv.id} className="flex items-center justify-between px-3 py-1.5">
+                          <span className="text-gray-700">
+                            #{inv.invoice_number || '—'}
+                            {billingSummaryScope === 'all' && inv.location ? ` • ${inv.location}` : ''}
+                            <span className="text-gray-400"> • {format(parseISO(inv.start_date), 'MM/dd/yy')}–{format(parseISO(inv.end_date), 'MM/dd/yy')}</span>
+                          </span>
+                          <span className="flex items-center gap-2">
+                            <span className={`text-xs px-1.5 py-0.5 rounded ${inv.payment_status === 'partial' ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-700'}`}>
+                              {inv.payment_status === 'partial' ? 'Partial' : 'Unpaid'}
+                            </span>
+                            <span className="font-medium text-gray-900">
+                              ${formatCurrency(Math.max(0, (Number(inv.grand_total) || 0) - (Number(inv.amount_paid) || 0)))}
+                            </span>
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                    {billingSummary.openInvoices.length > 5 && (
+                      <div className="text-xs text-gray-500 mt-1">+{billingSummary.openInvoices.length - 5} more in the Invoice Vault below</div>
+                    )}
+                  </div>
+                )}
+                {billingSummaryScope === 'location' && billingSummary.billedThrough && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const nextStart = format(addDays(parseISO(billingSummary.billedThrough), 1), 'yyyy-MM-dd');
+                      const today = format(new Date(), 'yyyy-MM-dd');
+                      setStartDate(nextStart);
+                      setEndDate(nextStart > today ? nextStart : today);
+                      setDatePreset('custom');
+                    }}
+                    className="mt-3 text-sm text-blue-700 hover:underline"
+                  >
+                    Bill everything since last invoice ({format(addDays(parseISO(billingSummary.billedThrough), 1), 'MM/dd/yyyy')} – today)
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        )}
 
         <div className="mt-4 flex gap-2">
           <button
