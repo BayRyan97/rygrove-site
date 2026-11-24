@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { answerWithClaude, claudeEnabled } from './claude.ts';
 
 interface AskAiRequestBody {
   question: string;
@@ -1150,6 +1151,74 @@ Deno.serve(async (req) => {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
+    }
+
+    // Claude engine: only runs when the ANTHROPIC_API_KEY secret is set.
+    // Without it (or if Claude fails), the keyword engine below answers as before.
+    if (claudeEnabled()) {
+      try {
+        const { data: history } = await serviceClient
+          .from('ai_chat_messages')
+          .select('role, content')
+          .eq('session_id', sessionId)
+          .order('created_at', { ascending: false })
+          .limit(13);
+
+        // Lookups run as the signed-in person, so row level security applies.
+        const userClient = createClient(supabaseUrl, anonKey, {
+          global: { headers: { Authorization: `Bearer ${token}` } },
+          auth: { persistSession: false, autoRefreshToken: false },
+        });
+
+        const result = await answerWithClaude({
+          question,
+          history: ((history || []) as Array<{ role: string; content: string }>).reverse(),
+          userClient,
+          currentUser: {
+            id: currentProfile.id,
+            full_name: currentProfile.full_name,
+            role: currentProfile.role,
+          },
+        });
+
+        const claudeInsert = await serviceClient
+          .from('ai_chat_messages')
+          .insert({
+            session_id: sessionId,
+            user_id: user.id,
+            role: 'assistant',
+            content: result.answer,
+            tool_calls: result.toolCalls,
+            metadata: result.metadata,
+          })
+          .select('id, content, metadata')
+          .single();
+
+        if (claudeInsert.error || !claudeInsert.data) {
+          throw new Error('Failed to persist Claude answer');
+        }
+
+        await serviceClient
+          .from('ai_chat_sessions')
+          .update({ updated_at: new Date().toISOString() })
+          .eq('id', sessionId)
+          .eq('user_id', user.id);
+
+        return new Response(
+          JSON.stringify({
+            sessionId,
+            answer: claudeInsert.data.content,
+            metadata: claudeInsert.data.metadata,
+            messageId: claudeInsert.data.id,
+          }),
+          {
+            status: 200,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          }
+        );
+      } catch (claudeError) {
+        console.error('ask-ai Claude engine failed, using keyword engine:', claudeError);
+      }
     }
 
     const intentFromQuestion = detectIntent(question);
